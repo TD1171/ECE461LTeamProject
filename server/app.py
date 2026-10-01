@@ -1,18 +1,32 @@
-# Import necessary libraries and modules
+import os
+from pathlib import Path
+
 from bson.objectid import ObjectId
+from dotenv import load_dotenv
 from flask import Flask, request, jsonify
 from pymongo import MongoClient
 
-# Import custom modules for database interactions
-import usersDB
-import projectsDB
-import hardwareDB
 
-# Define the MongoDB connection string
-MONGODB_SERVER = "your_mongodb_connection_string_here"
+import usersDatabase as usersDB
+import projectsDatabase as projectsDB
+import hardwareDatabase as hardwareDB
+
+# Load the repository root .env even when Flask is started from server/.
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+MONGODB_SERVER = os.getenv("MONGODB_URI")
+if not MONGODB_SERVER:
+    raise RuntimeError("MONGODB_URI is not set in the repository .env file")
+
+mongo_client = MongoClient(MONGODB_SERVER)
 
 # Initialize a new Flask web application
 app = Flask(__name__)
+
+
+@app.route('/api/health')
+def health_check():
+    mongo_client.admin.command('ping')
+    return jsonify({'status': 'ok', 'database': 'connected'})
 
 # Route for user login
 @app.route('/login', methods=['POST'])

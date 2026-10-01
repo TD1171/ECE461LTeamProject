@@ -1,0 +1,10 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+node_modules/
+npm-debug.log*
+client/build/
+.pytest_cache/
+.vscode/
