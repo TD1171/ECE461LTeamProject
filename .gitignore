@@ -1,9 +1,12 @@
 .DS_Store
 .env
-.pytest_cache/
+.venv/
+venv/
 __pycache__/
 *.py[cod]
-.venv/
+node_modules/
 client/node_modules/
 client/build/
-
+npm-debug.log*
+.pytest_cache/
+.vscode/

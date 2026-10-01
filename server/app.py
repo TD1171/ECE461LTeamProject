@@ -1,7 +1,9 @@
-"""Flask API for the hardware inventory page."""
+"""Flask application for user, project, and hardware APIs."""
 
 import os
+from pathlib import Path
 
+from dotenv import load_dotenv
 from flask import Flask, jsonify
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
@@ -9,14 +11,20 @@ from pymongo.errors import PyMongoError
 try:
     from .dummyHardwareData import DUMMY_HARDWARE, InMemoryHardwareCollection
     from .hardwareDatabase import listHardwareSets, queryHardwareSet
-except ImportError:  # Allows `python server/app.py` during local development.
+except ImportError:  # Supports `python server/app.py` from the repository root.
     from dummyHardwareData import DUMMY_HARDWARE, InMemoryHardwareCollection
     from hardwareDatabase import listHardwareSets, queryHardwareSet
 
 
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
+
 def _build_hardware_collection(app):
-    """Choose dummy data by default, or MongoDB when the team is ready."""
+    """Use MongoDB when configured; otherwise use temporary in-memory data."""
     if app.config["HARDWARE_DATA_SOURCE"] == "mongodb":
+        if not app.config["MONGODB_URI"]:
+            raise RuntimeError("MONGODB_URI is required when using MongoDB")
+
         client = MongoClient(
             app.config["MONGODB_URI"],
             serverSelectionTimeoutMS=2500,
@@ -30,11 +38,14 @@ def _build_hardware_collection(app):
 
 
 def create_app(config=None, hardware_collection=None):
-    """Create the Flask app with an optionally injected data collection."""
+    """Create the Flask application with an injectable hardware collection."""
     app = Flask(__name__)
+    default_source = "mongodb" if os.getenv("MONGODB_URI") else "dummy"
     app.config.from_mapping(
-        HARDWARE_DATA_SOURCE=os.getenv("HARDWARE_DATA_SOURCE", "dummy").lower(),
-        MONGODB_URI=os.getenv("MONGODB_URI", "mongodb://localhost:27017"),
+        HARDWARE_DATA_SOURCE=os.getenv(
+            "HARDWARE_DATA_SOURCE", default_source
+        ).lower(),
+        MONGODB_URI=os.getenv("MONGODB_URI", ""),
         MONGODB_DATABASE=os.getenv("MONGODB_DATABASE", "HardwareCheckout"),
         MONGODB_HARDWARE_COLLECTION=os.getenv(
             "MONGODB_HARDWARE_COLLECTION", "HardwareSets"
@@ -51,7 +62,12 @@ def create_app(config=None, hardware_collection=None):
     app.extensions["mongo_client"] = mongo_client
 
     @app.get("/api/health")
-    def health():
+    def health_check():
+        if mongo_client is not None:
+            try:
+                mongo_client.admin.command("ping")
+            except PyMongoError:
+                return jsonify({"status": "error", "database": "unavailable"}), 503
         return jsonify(
             {
                 "status": "ok",
@@ -79,6 +95,59 @@ def create_app(config=None, hardware_collection=None):
         if hardware is None:
             return jsonify({"error": "Hardware set not found."}), 404
         return jsonify(hardware)
+
+    # Existing team endpoints remain available for parallel development.
+    @app.post("/login")
+    def login():
+        return jsonify({})
+
+    @app.get("/main")
+    def main_page():
+        return jsonify({})
+
+    @app.post("/join_project")
+    def join_project():
+        return jsonify({})
+
+    @app.post("/add_user")
+    def add_user():
+        return jsonify({})
+
+    @app.post("/get_user_projects_list")
+    def get_user_projects_list():
+        return jsonify({})
+
+    @app.post("/create_project")
+    def create_project():
+        return jsonify({})
+
+    @app.post("/get_project_info")
+    def get_project_info():
+        return jsonify({})
+
+    @app.post("/get_all_hw_names")
+    def get_all_hw_names():
+        return jsonify({})
+
+    @app.post("/get_hw_info")
+    def get_hw_info():
+        return jsonify({})
+
+    @app.post("/check_out")
+    def check_out():
+        return jsonify({})
+
+    @app.post("/check_in")
+    def check_in():
+        return jsonify({})
+
+    @app.post("/create_hardware_set")
+    def create_hardware_set():
+        return jsonify({})
+
+    @app.get("/api/inventory")
+    def check_inventory():
+        return jsonify({})
 
     return app
 
