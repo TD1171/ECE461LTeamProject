@@ -1,8 +1,4 @@
 """ 
-Like hardwareDatabase, these functions operate on a small collection interface
-shared by PyMongo and the in-memory development collection, so the API does not
-change when the team connects MongoDB.
- 
 Structure of a stored project document:
 Project = {
     'projectName': projectName,
@@ -13,12 +9,40 @@ Project = {
 }
 """
 
+import re
+
+
 MAX_NAME_LENGTH = 100
 MAX_DESCRIPTION_LENGTH = 1000
+PROJECT_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 
+"""Return cleaned fields or raise ValueError with message"""
+def validateProjectFields(projectName, projectID, description):
+    if not isinstance(projectName, str) or not projectName.strip():
+        raise ValueError("Project name is required.")
+    projectName = projectName.strip()
+    if len(projectName) > MAX_NAME_LENGTH:
+        raise ValueError(f"Project name must be {MAX_NAME_LENGTH} characters or fewer.")
+
+    if not isinstance(projectID, str) or not projectID.strip():
+        raise ValueError("Project ID is required.")
+    projectID = projectID.strip()
+    if not PROJECT_ID_PATTERN.match(projectID):
+        raise ValueError("Project ID must be 1-32 characters using letters, numbers, hyphens, or underscores.")
+
+    if description is not None:
+        description = ""
+    if not isinstance(description, str):
+        raise ValueError("Description must be a text.")
+    description = description.strip()
+    if len(description) > MAX_DESCRIPTION_LENGTH:
+        raise ValueError(f"Description must be {MAX_DESCRIPTION_LENGTH} characters or fewer.")
+
+    return projectName, projectID, description
+
+"""Create a new project document in the collection."""  
 def createProject(collection, projectName, projectID, description="", creatorID=None):
-    """Create a new project document in the collection."""
-
+    
     # Validate input lengths
     if len(projectName) > MAX_NAME_LENGTH:
         raise ValueError("Project name exceeds maximum length.")
