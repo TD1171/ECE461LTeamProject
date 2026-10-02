@@ -1,212 +1,159 @@
+"""Flask application for user, project, and hardware APIs."""
+
 import os
 from pathlib import Path
 
-from bson.objectid import ObjectId
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify
+from flask import Flask, jsonify
 from pymongo import MongoClient
+from pymongo.errors import PyMongoError
+
+try:
+    from .dummyHardwareData import DUMMY_HARDWARE, InMemoryHardwareCollection
+    from .hardwareDatabase import listHardwareSets, queryHardwareSet
+except ImportError:  # Supports `python server/app.py` from the repository root.
+    from dummyHardwareData import DUMMY_HARDWARE, InMemoryHardwareCollection
+    from hardwareDatabase import listHardwareSets, queryHardwareSet
 
 
-import usersDatabase as usersDB
-import projectsDatabase as projectsDB
-import hardwareDatabase as hardwareDB
-
-# Load the repository root .env even when Flask is started from server/.
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
-MONGODB_SERVER = os.getenv("MONGODB_URI")
-if not MONGODB_SERVER:
-    raise RuntimeError("MONGODB_URI is not set in the repository .env file")
 
-mongo_client = MongoClient(MONGODB_SERVER)
 
-# Initialize a new Flask web application
-app = Flask(__name__)
+def _build_hardware_collection(app):
+    """Use MongoDB when configured; otherwise use temporary in-memory data."""
+    if app.config["HARDWARE_DATA_SOURCE"] == "mongodb":
+        if not app.config["MONGODB_URI"]:
+            raise RuntimeError("MONGODB_URI is required when using MongoDB")
+
+        client = MongoClient(
+            app.config["MONGODB_URI"],
+            serverSelectionTimeoutMS=2500,
+        )
+        collection = client[app.config["MONGODB_DATABASE"]][
+            app.config["MONGODB_HARDWARE_COLLECTION"]
+        ]
+        return collection, client
+
+    return InMemoryHardwareCollection(DUMMY_HARDWARE), None
+
+
+def create_app(config=None, hardware_collection=None):
+    """Create the Flask application with an injectable hardware collection."""
+    app = Flask(__name__)
+    default_source = "mongodb" if os.getenv("MONGODB_URI") else "dummy"
+    app.config.from_mapping(
+        HARDWARE_DATA_SOURCE=os.getenv(
+            "HARDWARE_DATA_SOURCE", default_source
+        ).lower(),
+        MONGODB_URI=os.getenv("MONGODB_URI", ""),
+        MONGODB_DATABASE=os.getenv("MONGODB_DATABASE", "HardwareCheckout"),
+        MONGODB_HARDWARE_COLLECTION=os.getenv(
+            "MONGODB_HARDWARE_COLLECTION", "HardwareSets"
+        ),
+    )
+    if config:
+        app.config.update(config)
+
+    mongo_client = None
+    if hardware_collection is None:
+        hardware_collection, mongo_client = _build_hardware_collection(app)
+
+    app.extensions["hardware_collection"] = hardware_collection
+    app.extensions["mongo_client"] = mongo_client
+
+    @app.get("/api/health")
+    def health_check():
+        if mongo_client is not None:
+            try:
+                mongo_client.admin.command("ping")
+            except PyMongoError:
+                return jsonify({"status": "error", "database": "unavailable"}), 503
+        return jsonify(
+            {
+                "status": "ok",
+                "hardwareDataSource": app.config["HARDWARE_DATA_SOURCE"],
+            }
+        )
+
+    @app.get("/api/hardware")
+    def get_hardware():
+        try:
+            hardware = listHardwareSets(app.extensions["hardware_collection"])
+        except PyMongoError:
+            return jsonify({"error": "Hardware inventory is temporarily unavailable."}), 503
+        return jsonify({"hardware": hardware})
+
+    @app.get("/api/hardware/<string:hardware_name>")
+    def get_hardware_detail(hardware_name):
+        try:
+            hardware = queryHardwareSet(
+                app.extensions["hardware_collection"], hardware_name
+            )
+        except PyMongoError:
+            return jsonify({"error": "Hardware inventory is temporarily unavailable."}), 503
+
+        if hardware is None:
+            return jsonify({"error": "Hardware set not found."}), 404
+        return jsonify(hardware)
+
+    # Existing team endpoints remain available for parallel development.
+    @app.post("/login")
+    def login():
+        return jsonify({})
+
+    @app.get("/main")
+    def main_page():
+        return jsonify({})
+
+    @app.post("/join_project")
+    def join_project():
+        return jsonify({})
+
+    @app.post("/add_user")
+    def add_user():
+        return jsonify({})
+
+    @app.post("/get_user_projects_list")
+    def get_user_projects_list():
+        return jsonify({})
+
+    @app.post("/create_project")
+    def create_project():
+        return jsonify({})
 
+    @app.post("/get_project_info")
+    def get_project_info():
+        return jsonify({})
 
-@app.route('/api/health')
-def health_check():
-    mongo_client.admin.command('ping')
-    return jsonify({'status': 'ok', 'database': 'connected'})
+    @app.post("/get_all_hw_names")
+    def get_all_hw_names():
+        return jsonify({})
 
-# Route for user login
-@app.route('/login', methods=['POST'])
-def login():
-    # Extract data from request
+    @app.post("/get_hw_info")
+    def get_hw_info():
+        return jsonify({})
 
-    # Connect to MongoDB
+    @app.post("/check_out")
+    def check_out():
+        return jsonify({})
 
-    # Attempt to log in the user using the usersDB module
+    @app.post("/check_in")
+    def check_in():
+        return jsonify({})
 
-    # Close the MongoDB connection
+    @app.post("/create_hardware_set")
+    def create_hardware_set():
+        return jsonify({})
 
-    # Return a JSON response
-    return jsonify({})
+    @app.get("/api/inventory")
+    def check_inventory():
+        return jsonify({})
 
-# Route for the main page (Work in progress)
-@app.route('/main')
-def mainPage():
-    # Extract data from request
+    return app
 
-    # Connect to MongoDB
 
-    # Fetch user projects using the usersDB module
+app = create_app()
 
-    # Close the MongoDB connection
 
-    # Return a JSON response
-    return jsonify({})
-
-# Route for joining a project
-@app.route('/join_project', methods=['POST'])
-def join_project():
-    # Extract data from request
-
-    # Connect to MongoDB
-
-    # Attempt to join the project using the usersDB module
-
-    # Close the MongoDB connection
-
-    # Return a JSON response
-    return jsonify({})
-
-# Route for adding a new user
-@app.route('/add_user', methods=['POST'])
-def add_user():
-    # Extract data from request
-
-    # Connect to MongoDB
-
-    # Attempt to add the user using the usersDB module
-
-    # Close the MongoDB connection
-
-    # Return a JSON response
-    return jsonify({})
-
-# Route for getting the list of user projects
-@app.route('/get_user_projects_list', methods=['POST'])
-def get_user_projects_list():
-    # Extract data from request
-
-    # Connect to MongoDB
-
-    # Fetch the user's projects using the usersDB module
-
-    # Close the MongoDB connection
-
-    # Return a JSON response
-    return jsonify({})
-
-# Route for creating a new project
-@app.route('/create_project', methods=['POST'])
-def create_project():
-    # Extract data from request
-
-    # Connect to MongoDB
-
-    # Attempt to create the project using the projectsDB module
-
-    # Close the MongoDB connection
-
-    # Return a JSON response
-    return jsonify({})
-
-# Route for getting project information
-@app.route('/get_project_info', methods=['POST'])
-def get_project_info():
-    # Extract data from request
-
-    # Connect to MongoDB
-
-    # Fetch project information using the projectsDB module
-
-    # Close the MongoDB connection
-
-    # Return a JSON response
-    return jsonify({})
-
-# Route for getting all hardware names
-@app.route('/get_all_hw_names', methods=['POST'])
-def get_all_hw_names():
-    # Connect to MongoDB
-
-    # Fetch all hardware names using the hardwareDB module
-
-    # Close the MongoDB connection
-
-    # Return a JSON response
-    return jsonify({})
-
-# Route for getting hardware information
-@app.route('/get_hw_info', methods=['POST'])
-def get_hw_info():
-    # Extract data from request
-
-    # Connect to MongoDB
-
-    # Fetch hardware set information using the hardwareDB module
-
-    # Close the MongoDB connection
-
-    # Return a JSON response
-    return jsonify({})
-
-# Route for checking out hardware
-@app.route('/check_out', methods=['POST'])
-def check_out():
-    # Extract data from request
-
-    # Connect to MongoDB
-
-    # Attempt to check out the hardware using the projectsDB module
-
-    # Close the MongoDB connection
-
-    # Return a JSON response
-    return jsonify({})
-
-# Route for checking in hardware
-@app.route('/check_in', methods=['POST'])
-def check_in():
-    # Extract data from request
-
-    # Connect to MongoDB
-
-    # Attempt to check in the hardware using the projectsDB module
-
-    # Close the MongoDB connection
-
-    # Return a JSON response
-    return jsonify({})
-
-# Route for creating a new hardware set
-@app.route('/create_hardware_set', methods=['POST'])
-def create_hardware_set():
-    # Extract data from request
-
-    # Connect to MongoDB
-
-    # Attempt to create the hardware set using the hardwareDB module
-
-    # Close the MongoDB connection
-
-    # Return a JSON response
-    return jsonify({})
-
-# Route for checking the inventory of projects
-@app.route('/api/inventory', methods=['GET'])
-def check_inventory():
-    # Connect to MongoDB
-
-    # Fetch all projects from the HardwareCheckout.Projects collection
-
-    # Close the MongoDB connection
-
-    # Return a JSON response
-    return jsonify({})
-
-# Main entry point for the application
-if __name__ == '__main__':
-    app.run()
-
+if __name__ == "__main__":
+    app.run(debug=True)

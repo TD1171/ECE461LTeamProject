@@ -1,10 +1,12 @@
+.DS_Store
 .env
 .venv/
 venv/
 __pycache__/
 *.py[cod]
 node_modules/
-npm-debug.log*
+client/node_modules/
 client/build/
+npm-debug.log*
 .pytest_cache/
 .vscode/
