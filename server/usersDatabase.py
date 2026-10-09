@@ -1,7 +1,8 @@
 # Import necessary libraries and modules
-from pymongo import MongoClient
+#from pymongo import MongoClient
+from werkzeug.security import generate_password_hash
 
-import projectsDatabase as projectsDB
+#import projectsDatabase as projectsDB
 
 '''
 Structure of User entry:
@@ -14,10 +15,31 @@ User = {
 '''
 
 # Function to add a new user
-def addUser(client, username, userId, password):
-    # Add a new user to the database
-    pass
 
+
+
+def addUser(collection, username, userId, password):
+    """Create a user unless the userId already exists."""
+
+    existing_user = collection.find_one({"userId": userId})
+
+    if existing_user is not None:
+        return None
+
+    user = {
+        "username": username,
+        "userId": userId,
+        "password": generate_password_hash(password),
+        "projects": [],
+    }
+
+    collection.insert_one(user)
+
+    return {
+        "username": username,
+        "userId": userId,
+        "projects": [],
+    }
 # Helper function to query a user by username and userId
 def __queryUser(client, username, userId):
     # Query and return a user from the database
