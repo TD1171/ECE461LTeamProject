@@ -6,20 +6,32 @@ from pathlib import Path
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from pymongo import MongoClient
-from pymongo.errors import PyMongoError
+from pymongo.errors import DuplicateKeyError, PyMongoError
 
 
 
 try:
     from .dummyHardwareData import DUMMY_HARDWARE, InMemoryHardwareCollection
     from .dummyProjectData import DUMMY_PROJECTS, InMemoryProjectCollection
-    from .hardwareDatabase import listHardwareSets, queryHardwareSet
+    from .hardwareDatabase import (
+        HardwareExistsError,
+        createHardwareSet,
+        listHardwareSets,
+        queryHardwareSet,
+    )
     from .projectsDatabase import ProjectExistsError, createProject, queryProject
+    from .usersDatabase import addUser
 except ImportError:  # Supports `python server/app.py` from the repository root.
     from dummyHardwareData import DUMMY_HARDWARE, InMemoryHardwareCollection
     from dummyProjectData import DUMMY_PROJECTS, InMemoryProjectCollection
-    from hardwareDatabase import listHardwareSets, queryHardwareSet
+    from hardwareDatabase import (
+        HardwareExistsError,
+        createHardwareSet,
+        listHardwareSets,
+        queryHardwareSet,
+    )
     from projectsDatabase import ProjectExistsError, createProject, queryProject
+    from usersDatabase import addUser
 
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
@@ -38,6 +50,10 @@ def _build_hardware_collection(app):
         collection = client[app.config["MONGODB_DATABASE"]][
             app.config["MONGODB_HARDWARE_COLLECTION"]
         ]
+        try:
+            collection.create_index("hwName", unique=True)
+        except PyMongoError:
+            app.logger.warning("Could not ensure unique index on hwName.")
         return collection, client
 
     return InMemoryHardwareCollection(DUMMY_HARDWARE), None
@@ -57,7 +73,27 @@ def _build_projects_collection(app, mongo_client):
         app.logger.warning("Could not ensure unique index on projectId.")
     return collection
 
-def create_app(config=None, hardware_collection=None, projects_collection=None):
+
+def _build_user_collection(app, mongo_client):
+    """Create the user collection and enforce unique user IDs."""
+    if mongo_client is None:
+        return None
+
+    collection = mongo_client[app.config["MONGODB_DATABASE"]][
+        app.config["MONGODB_USER_COLLECTION"]
+    ]
+    try:
+        collection.create_index("userId", unique=True)
+    except PyMongoError:
+        app.logger.warning("Could not ensure unique index on userId.")
+    return collection
+
+def create_app(
+    config=None,
+    hardware_collection=None,
+    projects_collection=None,
+    user_collection=None,
+):
     """Create the Flask application with an injectable hardware collection."""
     app = Flask(__name__)
     default_source = "mongodb" if os.getenv("MONGODB_URI") else "dummy"
@@ -73,6 +109,7 @@ def create_app(config=None, hardware_collection=None, projects_collection=None):
         MONGODB_PROJECTS_COLLECTION=os.getenv(
             "MONGODB_PROJECTS_COLLECTION", "Projects"
         ),
+        MONGODB_USER_COLLECTION=os.getenv("MONGODB_USER_COLLECTION", "Users"),
     )
     if config:
         app.config.update(config)
@@ -84,16 +121,12 @@ def create_app(config=None, hardware_collection=None, projects_collection=None):
     if projects_collection is None:
         projects_collection = _build_projects_collection(app, mongo_client)
 
+    if user_collection is None:
+        user_collection = _build_user_collection(app, mongo_client)
+
     app.extensions["hardware_collection"] = hardware_collection
     app.extensions["projects_collection"] = projects_collection
     app.extensions["mongo_client"] = mongo_client
-
-    if mongo_client is not None:
-        user_collection = mongo_client[app.config["MONGODB_DATABASE"]][
-            app.config["MONGODB_USER_COLLECTION"]
-        ]
-    else:
-        user_collection = None
 
     app.extensions["user_collection"] = user_collection
     
@@ -132,6 +165,36 @@ def create_app(config=None, hardware_collection=None, projects_collection=None):
         if hardware is None:
             return jsonify({"error": "Hardware set not found."}), 404
         return jsonify(hardware)
+
+    @app.post("/api/hardware")
+    @app.post("/create_hardware_set")
+    def create_hardware_api():
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"error": "Request body must be a JSON object."}), 400
+
+        name = payload.get("name", payload.get("hwSetName"))
+        capacity = payload.get("capacity", payload.get("initCapacity"))
+        details = {
+            key: payload[key]
+            for key in ("description", "location", "specifications")
+            if key in payload
+        }
+
+        try:
+            hardware = createHardwareSet(
+                app.extensions["hardware_collection"], name, capacity, **details
+            )
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+        except HardwareExistsError as error:
+            return jsonify({"error": str(error)}), 409
+        except DuplicateKeyError:
+            return jsonify({"error": f"Hardware set '{name}' already exists."}), 409
+        except PyMongoError:
+            return jsonify({"error": "Hardware inventory is temporarily unavailable."}), 503
+
+        return jsonify(hardware), 201
 
     @app.post("/api/projects")
     def create_project_api():
@@ -210,6 +273,8 @@ def create_app(config=None, hardware_collection=None, projects_collection=None):
                 user_id,
                 password,
             )
+        except DuplicateKeyError:
+            return jsonify({"error": "User ID already exists."}), 409
         except PyMongoError:
             return jsonify({
                 "error": "User database is temporarily unavailable."
@@ -248,10 +313,6 @@ def create_app(config=None, hardware_collection=None, projects_collection=None):
 
     @app.post("/check_in")
     def check_in():
-        return jsonify({})
-
-    @app.post("/create_hardware_set")
-    def create_hardware_set():
         return jsonify({})
 
     @app.get("/api/inventory")

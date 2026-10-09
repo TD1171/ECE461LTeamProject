@@ -37,3 +37,6 @@ class InMemoryHardwareCollection:
             if all(document.get(key) == value for key, value in query.items()):
                 return deepcopy(document)
         return None
+
+    def insert_one(self, document):
+        self._documents.append(deepcopy(document))
