@@ -12,12 +12,14 @@ from pymongo.errors import PyMongoError
 
 try:
     from .dummyHardwareData import DUMMY_HARDWARE, InMemoryHardwareCollection
+    from .dummyProjectData import DUMMY_PROJECTS, InMemoryProjectCollection
     from .hardwareDatabase import listHardwareSets, queryHardwareSet
-    from .usersDatabase import addUser
+    from .projectsDatabase import ProjectExistsError, createProject, queryProject
 except ImportError:  # Supports `python server/app.py` from the repository root.
     from dummyHardwareData import DUMMY_HARDWARE, InMemoryHardwareCollection
+    from dummyProjectData import DUMMY_PROJECTS, InMemoryProjectCollection
     from hardwareDatabase import listHardwareSets, queryHardwareSet
-    from usersDatabase import addUser
+    from projectsDatabase import ProjectExistsError, createProject, queryProject
 
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
@@ -40,8 +42,22 @@ def _build_hardware_collection(app):
 
     return InMemoryHardwareCollection(DUMMY_HARDWARE), None
 
+def _build_projects_collection(app, mongo_client):
+    """Share the hardware MongoDB client when configured; else use memory."""
+    if mongo_client is None:
+        return InMemoryProjectCollection(DUMMY_PROJECTS)
 
-def create_app(config=None, hardware_collection=None):
+    collection = mongo_client[app.config["MONGODB_DATABASE"]][
+        app.config["MONGODB_PROJECTS_COLLECTION"]
+    ]
+    try:
+        # Enforces unique project IDs even if two requests race.
+        collection.create_index("projectId", unique=True)
+    except PyMongoError:
+        app.logger.warning("Could not ensure unique index on projectId.")
+    return collection
+
+def create_app(config=None, hardware_collection=None, projects_collection=None):
     """Create the Flask application with an injectable hardware collection."""
     app = Flask(__name__)
     default_source = "mongodb" if os.getenv("MONGODB_URI") else "dummy"
@@ -54,8 +70,8 @@ def create_app(config=None, hardware_collection=None):
         MONGODB_HARDWARE_COLLECTION=os.getenv(
             "MONGODB_HARDWARE_COLLECTION", "HardwareSets"
         ),
-        MONGODB_USER_COLLECTION=os.getenv(
-        "MONGODB_USER_COLLECTION", "Users"
+        MONGODB_PROJECTS_COLLECTION=os.getenv(
+            "MONGODB_PROJECTS_COLLECTION", "Projects"
         ),
     )
     if config:
@@ -65,7 +81,11 @@ def create_app(config=None, hardware_collection=None):
     if hardware_collection is None:
         hardware_collection, mongo_client = _build_hardware_collection(app)
 
+    if projects_collection is None:
+        projects_collection = _build_projects_collection(app, mongo_client)
+
     app.extensions["hardware_collection"] = hardware_collection
+    app.extensions["projects_collection"] = projects_collection
     app.extensions["mongo_client"] = mongo_client
 
     if mongo_client is not None:
@@ -113,6 +133,43 @@ def create_app(config=None, hardware_collection=None):
             return jsonify({"error": "Hardware set not found."}), 404
         return jsonify(hardware)
 
+    @app.post("/api/projects")
+    def create_project_api():
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"error": "Request body must be a JSON object."}), 400
+
+        try:
+            project = createProject(
+                app.extensions["projects_collection"],
+                payload.get("projectName"),
+                payload.get("projectId"),
+                payload.get("description", ""),
+                # TODO: take the creator from the signed-in session once
+                # Sign In (#2) lands, instead of trusting the request body.
+                creatorId=payload.get("userId"),
+            )
+
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+        except ProjectExistsError as error:
+            return jsonify({"error": str(error)}), 409
+        except PyMongoError:
+            return jsonify({"error": "Projects are temporarily unavailable."}), 503
+
+        return jsonify(project), 201
+
+    @app.get("/api/projects/<string:project_id>")
+    def get_project_api(project_id):
+        try:
+            project = queryProject(app.extensions["projects_collection"], project_id)
+        except PyMongoError:
+            return jsonify({"error": "Projects are temporarily unavailable."}), 503
+
+        if project is None:
+            return jsonify({"error": "Project not found."}), 404
+        return jsonify(project)
+    
     # Existing team endpoints remain available for parallel development.
     @app.post("/login")
     def login():

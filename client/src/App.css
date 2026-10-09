@@ -296,3 +296,40 @@
 .account-message {
   margin: 8px 0;
 }
+
+
+/* Create Project page */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+}
+
+.page-header .page-title {
+  border-bottom: 0;
+}
+
+.page-header-link {
+  padding: 0 24px;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.project-form {
+  max-width: 640px;
+}
+
+.project-form .field-row {
+  grid-template-columns: 120px minmax(0, 1fr);
+}
+
+.project-form .field-row textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  padding: 5px 10px;
+  font: inherit;
+  resize: vertical;
+}
