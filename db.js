@@ -5,10 +5,9 @@ const client = new MongoClient(process.env.MONGODB_URI);
 
 async function main() {
   await client.connect();
-  const db = client.db('myapp');
-  const users = db.collection('users');
-  await users.insertOne({ name: 'Ada' });
-  console.log(await users.findOne({ name: 'Ada' }));
+  const databaseName = process.env.MONGODB_DATABASE || 'HardwareCheckout';
+  await client.db(databaseName).command({ ping: 1 });
+  console.log(`MongoDB connection successful: ${databaseName}`);
   await client.close();
 }
 

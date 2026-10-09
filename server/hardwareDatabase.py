@@ -8,6 +8,10 @@ when the team connects MongoDB later.
 from pymongo import ReturnDocument
 
 
+class HardwareExistsError(Exception):
+    """Raised when a hardware set name is already in use."""
+
+
 def serializeHardwareSet(document):
     """Convert a stored hardware document into the public API shape."""
     if document is None:
@@ -25,8 +29,13 @@ def serializeHardwareSet(document):
 
 def createHardwareSet(collection, hwSetName, initCapacity, **details):
     """Create a hardware set and return its normalized representation."""
+    if not isinstance(hwSetName, str) or not hwSetName.strip():
+        raise ValueError("Hardware set name is required.")
+    hwSetName = hwSetName.strip()
     if not isinstance(initCapacity, int) or initCapacity < 0:
         raise ValueError("Capacity must be a nonnegative integer.")
+    if collection.find_one({"hwName": hwSetName}) is not None:
+        raise HardwareExistsError(f"Hardware set '{hwSetName}' already exists.")
 
     document = {
         "hwName": hwSetName,
