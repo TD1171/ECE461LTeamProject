@@ -259,3 +259,40 @@
     grid-column: 1 / -1;
   }
 }
+
+.account-page {
+  width: 100%;
+  max-width: 460px;
+  margin: 80px auto;
+}
+
+.account-card {
+  padding: 32px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.account-card h1 {
+  margin-top: 0;
+  margin-bottom: 24px;
+}
+
+.account-card form {
+  display: grid;
+  gap: 10px;
+}
+
+.account-card input {
+  min-height: 38px;
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+}
+
+.account-button {
+  margin-top: 10px;
+}
+
+.account-message {
+  margin: 8px 0;
+}
