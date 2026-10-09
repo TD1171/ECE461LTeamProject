@@ -4,16 +4,20 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
+
+
 
 try:
     from .dummyHardwareData import DUMMY_HARDWARE, InMemoryHardwareCollection
     from .hardwareDatabase import listHardwareSets, queryHardwareSet
+    from .usersDatabase import addUser
 except ImportError:  # Supports `python server/app.py` from the repository root.
     from dummyHardwareData import DUMMY_HARDWARE, InMemoryHardwareCollection
     from hardwareDatabase import listHardwareSets, queryHardwareSet
+    from usersDatabase import addUser
 
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
@@ -50,6 +54,9 @@ def create_app(config=None, hardware_collection=None):
         MONGODB_HARDWARE_COLLECTION=os.getenv(
             "MONGODB_HARDWARE_COLLECTION", "HardwareSets"
         ),
+        MONGODB_USER_COLLECTION=os.getenv(
+        "MONGODB_USER_COLLECTION", "Users"
+        ),
     )
     if config:
         app.config.update(config)
@@ -60,6 +67,16 @@ def create_app(config=None, hardware_collection=None):
 
     app.extensions["hardware_collection"] = hardware_collection
     app.extensions["mongo_client"] = mongo_client
+
+    if mongo_client is not None:
+        user_collection = mongo_client[app.config["MONGODB_DATABASE"]][
+            app.config["MONGODB_USER_COLLECTION"]
+        ]
+    else:
+        user_collection = None
+
+    app.extensions["user_collection"] = user_collection
+    
 
     @app.get("/api/health")
     def health_check():
@@ -111,7 +128,42 @@ def create_app(config=None, hardware_collection=None):
 
     @app.post("/add_user")
     def add_user():
-        return jsonify({})
+        data = request.get_json(silent=True) or {}
+
+        user_id = str(data.get("userId", "")).strip()
+        password = data.get("password", "")
+        username = str(data.get("username") or user_id).strip()
+
+        if not user_id or not password:
+            return jsonify({
+                "error": "User ID and password are required."
+            }), 400
+
+        user_collection = app.extensions["user_collection"]
+
+        if user_collection is None:
+            return jsonify({
+                "error": "User database is unavailable."
+            }), 503
+
+        try:
+            user = addUser(
+                user_collection,
+                username,
+                user_id,
+                password,
+            )
+        except PyMongoError:
+            return jsonify({
+                "error": "User database is temporarily unavailable."
+            }), 503
+
+        if user is None:
+            return jsonify({
+                "error": "User ID already exists."
+            }), 409
+
+        return jsonify({"user": user}), 201
 
     @app.post("/get_user_projects_list")
     def get_user_projects_list():
