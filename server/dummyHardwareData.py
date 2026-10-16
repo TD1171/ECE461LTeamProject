@@ -24,7 +24,7 @@ DUMMY_HARDWARE = [
 
 
 class InMemoryHardwareCollection:
-    """Read-only subset of the PyMongo collection API for local development."""
+    """Small PyMongo-like collection used for local development and tests."""
 
     def __init__(self, documents):
         self._documents = deepcopy(documents)
@@ -40,3 +40,20 @@ class InMemoryHardwareCollection:
 
     def insert_one(self, document):
         self._documents.append(deepcopy(document))
+
+    def find_one_and_update(self, query, update, return_document=None):
+        hardware_name = query.get("hwName")
+        minimum = query.get("availability", {}).get("$gte", 0)
+
+        for document in self._documents:
+            if document.get("hwName") != hardware_name:
+                continue
+            if document.get("availability", 0) < minimum:
+                continue
+
+            if "availability" in update.get("$inc", {}):
+                document["availability"] += update["$inc"]["availability"]
+            if "availability" in update.get("$set", {}):
+                document["availability"] = update["$set"]["availability"]
+            return deepcopy(document)
+        return None
