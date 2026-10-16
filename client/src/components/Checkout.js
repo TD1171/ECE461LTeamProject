@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 
 import { fetchHardwareDetail, fetchHardwareSets } from "../api/hardwareApi";
@@ -51,7 +52,12 @@ function Checkout() {
 
   return (
     <section className="checkout-page">
-      <h1 className="page-title">Hardware Checkout</h1>
+      <header className="page-header">
+        <h1 className="page-title">Hardware Checkout</h1>
+        <Link className="page-header-link" to="/">
+          Back to Dashboard
+        </Link>
+      </header>
       <div className="checkout-content">
         <section aria-label="Hardware inventory">
           {loading && <p className="loading-message">Loading hardware inventory…</p>}

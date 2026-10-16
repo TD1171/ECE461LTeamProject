@@ -333,3 +333,25 @@
   font: inherit;
   resize: vertical;
 }
+
+/* dashboard navigation */
+.dashboard-links {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 350px;
+}
+
+.dashboard-links a {
+  display: block;
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  background: var(--surface);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.dashboard-links a:hover {
+  background: var(--soft-surface);
+}
