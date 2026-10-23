@@ -1,6 +1,7 @@
 """Temporary project storage used until the shared MongoDB is available."""
 
 from copy import deepcopy
+from types import SimpleNamespace
 
 
 DUMMY_PROJECTS = [
@@ -37,3 +38,21 @@ class InMemoryProjectCollection:
 
     def insert_one(self, document):
         self._documents.append(deepcopy(document))
+
+    def update_one(self, query, update):
+        """Apply a $addToSet update to teh first matching document.
+        
+        Return as object with matched_count and modified_count, like
+        PyMongo's UpdateResult, so celler can tell what happened."""
+
+        for document in self._documents:
+            if all(document.get(key) == value for key, value in query.items()):
+                modified = 0
+                for field, value in update.get("$addToSet", {}).items():
+                    values = document.setdefault(field, [])
+                    if value not in values:
+                        values.append(value)
+                        modified = 1
+                return SimpleNamespace(matched_count=1, modified_count=modified)
+        return SimpleNamespace(matched_count=0, modified_count=0)
+        
