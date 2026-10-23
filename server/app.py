@@ -18,6 +18,7 @@ try:
         createHardwareSet,
         listHardwareSets,
         queryHardwareSet,
+        requestSpace,
     )
     from .projectsDatabase import ProjectExistsError, createProject, queryProject
     from .usersDatabase import addUser
@@ -29,6 +30,7 @@ except ImportError:  # Supports `python server/app.py` from the repository root.
         createHardwareSet,
         listHardwareSets,
         queryHardwareSet,
+        requestSpace,
     )
     from projectsDatabase import ProjectExistsError, createProject, queryProject
     from usersDatabase import addUser
@@ -309,7 +311,29 @@ def create_app(
 
     @app.post("/check_out")
     def check_out():
-        return jsonify({})
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"error": "Request body must be a JSON object."}), 400
+
+        hardware_name = payload.get("hardwareName", payload.get("hwSetName"))
+        quantity = payload.get("quantity", payload.get("qty"))
+        if not isinstance(hardware_name, str) or not hardware_name.strip():
+            return jsonify({"error": "Hardware name is required."}), 400
+
+        try:
+            hardware = requestSpace(
+                app.extensions["hardware_collection"],
+                hardware_name.strip(),
+                quantity,
+            )
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+        except PyMongoError:
+            return jsonify({"error": "Hardware inventory is temporarily unavailable."}), 503
+
+        if hardware is None:
+            return jsonify({"error": "Not enough hardware is available."}), 409
+        return jsonify({"hardware": hardware}), 200
 
     @app.post("/check_in")
     def check_in():
