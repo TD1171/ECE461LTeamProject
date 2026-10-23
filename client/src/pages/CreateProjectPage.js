@@ -49,6 +49,10 @@ function CreateProjectPage() {
       </header>
 
       <div className="checkout-content">
+        <nav className="dashboard-links">
+          <Link to="/hardware">Hardware Checkout (Demo)</Link>
+        </nav>
+
         <form className="project-form" onSubmit={handleSubmit}>
           <div className="field-row">
             <label htmlFor="project-name">Project Name</label>
