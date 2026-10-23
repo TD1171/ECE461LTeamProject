@@ -11,7 +11,9 @@ function HomePage() {
         <div>
           <h2>My Projects</h2>
 
-          <Link to="/projects/new">+ Create Project</Link>
+          <nav className="dashboard-links">
+            <Link to="/projects/new">+ Create Project</Link>
+          </nav>
 
           <h3>No projects to display yet</h3>
           <p>

@@ -45,7 +45,7 @@ function CreateProjectPage() {
     <section className="checkout-page">
       <header className="page-header">
         <h1 className="page-title">Create Project</h1>
-        <Link className="page-header-link" to="/">Back to Dashboard</Link>
+        <Link className="page-header-link" to="/dashboard">Back to Dashboard</Link>
       </header>
 
       <div className="checkout-content">

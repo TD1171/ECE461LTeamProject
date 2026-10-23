@@ -67,5 +67,5 @@ test("requires name and ID before calling the server", async () => {
 test("links back to the dashboard", () => {
   renderPage();
 
-  expect(screen.getByRole("link", { name: "Back to Dashboard" })).toHaveAttribute("href", "/");
+  expect(screen.getByRole("link", { name: "Back to Dashboard" })).toHaveAttribute("href", "/dashboard");
 });
