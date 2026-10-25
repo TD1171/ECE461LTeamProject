@@ -23,6 +23,13 @@ export async function createProject({ projectName, projectId, description, userI
   });
 }
 
+export async function joinProject({ projectId, userId }) {
+  return requestJson(`/api/projects/${encodeURIComponent(projectId)}/users`, {
+    method: "POST",
+    body: JSON.stringify({ userId }),
+  });
+}
+
 export async function fetchProject(projectId) {
   return requestJson(`/api/projects/${encodeURIComponent(projectId)}`);
 }
