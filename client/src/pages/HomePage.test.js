@@ -23,3 +23,15 @@ test("dashboard displays projects section and create project link", () => {
 
   expect(createProjectLink.getAttribute("href")).toBe("/projects/new");
 });
+
+test("dashboard links to the join project page", () => {
+  render(
+    <MemoryRouter>
+      <HomePage />
+    </MemoryRouter>
+  );
+
+  const joinProjectLink = screen.getByRole("link", { name: /join project/i });
+
+  expect(joinProjectLink.getAttribute("href")).toBe("/projects/join");
+});

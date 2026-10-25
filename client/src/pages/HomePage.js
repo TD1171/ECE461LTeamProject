@@ -13,6 +13,7 @@ function HomePage() {
 
           <nav className="dashboard-links">
             <Link to="/projects/new">+ Create Project</Link>
+            <Link to="/projects/join">Join Project</Link>
           </nav>
 
           <h3>No projects to display yet</h3>
