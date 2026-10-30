@@ -218,16 +218,34 @@ def create_app(
         if not isinstance(payload, dict):
             return jsonify({"error": "Request body must be a JSON object."}), 400
 
+        # The creator automatically becomes the project's first member.
+        # TODO: take the creator from the signed-in session once Sign In (#2)
+        # lands, instead of trusting the request body.
+        creator_id = payload.get("userId")
+        if not isinstance(creator_id, str) or not creator_id.strip():
+            return jsonify({"error": "User ID is required."}), 400
+        creator_id = creator_id.strip()
+
+        user_collection = app.extensions["user_collection"]
         try:
+            # Check the user first so we never create a project with no
+            # real owner. Dummy mode has no user collection, so skip it there.
+            if user_collection is not None and not userExists(
+                user_collection, creator_id
+            ):
+                return jsonify({"error": f"User '{creator_id}' was not found."}), 404
+
             project = createProject(
                 app.extensions["projects_collection"],
                 payload.get("projectName"),
                 payload.get("projectId"),
                 payload.get("description", ""),
-                # TODO: take the creator from the signed-in session once
-                # Sign In (#2) lands, instead of trusting the request body.
-                creatorId=payload.get("userId"),
+                creatorId=creator_id,
             )
+
+            # Keep the user's side in sync, same as joining a project.
+            if user_collection is not None:
+                joinProject(user_collection, creator_id, project["projectId"])
 
         except ValueError as error:
             return jsonify({"error": str(error)}), 400
