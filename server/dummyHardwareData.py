@@ -44,11 +44,12 @@ class InMemoryHardwareCollection:
     def find_one_and_update(self, query, update, return_document=None):
         hardware_name = query.get("hwName")
         minimum = query.get("availability", {}).get("$gte", 0)
+        maximum = query.get("availability", {}).get("$lte", float("inf"))
 
         for document in self._documents:
             if document.get("hwName") != hardware_name:
                 continue
-            if document.get("availability", 0) < minimum:
+            if document.get("availability", 0) < minimum or document.get("availability", 0) > maximum:
                 continue
 
             if "availability" in update.get("$inc", {}):

@@ -58,6 +58,30 @@ class InMemoryProjectCollection:
         matches = self.find(query)
         return matches[0] if matches else None
 
+    def find_one_and_update(self, query, update, return_document=None):
+        for document in self._documents:
+            matched = True
+            for key, expected in query.items():
+                if "." in key:
+                    parent, child = key.split(".", 1)
+                    actual = document.get(parent, {}).get(child, 0)
+                else:
+                    actual = document.get(key)
+                if isinstance(expected, dict) and "$gte" in expected:
+                    matched = actual >= expected["$gte"]
+                else:
+                    matched = actual == expected
+                if not matched:
+                    break
+            if not matched:
+                continue
+            for key, amount in update.get("$inc", {}).items():
+                parent, child = key.split(".", 1)
+                values = document.setdefault(parent, {})
+                values[child] = values.get(child, 0) + amount
+            return deepcopy(document)
+        return None
+
     def insert_one(self, document):
         self._documents.append(deepcopy(document))
 

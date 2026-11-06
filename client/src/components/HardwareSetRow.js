@@ -27,7 +27,7 @@ function HardwareSetRow({
     return amount;
   };
 
-  const checkOut = () => {
+  const checkOut = async () => {
     const amount = readQuantity();
     if (amount === null) return;
     if (amount > hardware.available) {
@@ -40,11 +40,15 @@ function HardwareSetRow({
       return;
     }
 
-    onUpdateHardware(projectId, hardware.name, amount);
-    setMessage({ type: "success", text: `Checked out ${amount} unit(s).` });
+    try {
+      await onUpdateHardware(projectId, hardware.name, amount);
+      setMessage({ type: "success", text: `Checked out ${amount} unit(s).` });
+    } catch (error) {
+      setMessage({ type: "error", text: error.message });
+    }
   };
 
-  const checkIn = () => {
+  const checkIn = async () => {
     const amount = readQuantity();
     if (amount === null) return;
     if (amount > checkedOut) {
@@ -57,8 +61,12 @@ function HardwareSetRow({
       return;
     }
 
-    onUpdateHardware(projectId, hardware.name, -amount);
-    setMessage({ type: "success", text: `Checked in ${amount} unit(s).` });
+    try {
+      await onUpdateHardware(projectId, hardware.name, -amount);
+      setMessage({ type: "success", text: `Checked in ${amount} unit(s).` });
+    } catch (error) {
+      setMessage({ type: "error", text: error.message });
+    }
   };
 
   return (

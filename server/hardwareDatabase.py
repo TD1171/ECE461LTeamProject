@@ -96,6 +96,25 @@ def requestSpace(collection, hwSetName, amount):
     return serializeHardwareSet(updated)
 
 
+def returnSpace(collection, hwSetName, amount):
+    """Atomically return units without allowing availability above capacity."""
+    if not isinstance(amount, int) or amount <= 0:
+        raise ValueError("Requested amount must be a positive integer.")
+    document = collection.find_one({"hwName": hwSetName})
+    if document is None:
+        document = collection.find_one({"name": hwSetName})
+    if document is None:
+        return None
+    available_field = "availability" if "availability" in document else "available"
+    updated = collection.find_one_and_update(
+        {"hwName" if "hwName" in document else "name": hwSetName,
+         available_field: {"$lte": document["capacity"] - amount}},
+        {"$inc": {available_field: amount}},
+        return_document=ReturnDocument.AFTER,
+    )
+    return serializeHardwareSet(updated)
+
+
 def getAllHwNames(collection):
     """Return hardware names for compatibility with the starter API."""
     return [hardware["name"] for hardware in listHardwareSets(collection)]

@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { fetchProjects, fetchUserProjects, joinProject } from "../api/projectsApi";
 import Button from "../components/Button";
 import ProjectCard from "../components/ProjectCard";
+import { checkoutHardware, checkinHardware, fetchHardwareSets } from "../api/hardwareApi";
 
 // Remembers the last user ID so the list reloads when you come back from
 // Create or Join. TODO: remove once Sign In (#2) gives us the real user.
@@ -39,27 +40,19 @@ function HomePage() {
   const [error, setError] = useState("");
   const [hardware, setHardware] = useState(INITIAL_HARDWARE);
 
-  const updateHardware = (projectId, hardwareName, quantityChange) => {
-    setHardware((items) => items.map((item) => (
-      item.name === hardwareName
-        ? {
-          ...item,
-          available: Math.min(item.capacity, item.available - quantityChange),
-        }
-        : item
-    )));
+  const updateHardware = async (projectId, hardwareName, quantityChange) => {
+    const result = quantityChange > 0
+      ? await checkoutHardware(projectId, hardwareName, quantityChange)
+      : await checkinHardware(projectId, hardwareName, -quantityChange);
+    setHardware(await fetchHardwareSets());
     setProjects((items) => items.map((project) => (
-      project.projectId === projectId
-        ? {
-          ...project,
-          hwSets: {
-            ...project.hwSets,
-            [hardwareName]: (project.hwSets?.[hardwareName] || 0) + quantityChange,
-          },
-        }
-        : project
+      project.projectId === projectId ? result.project : project
     )));
   };
+
+  useEffect(() => {
+    fetchHardwareSets().then(setHardware).catch((requestError) => setError(requestError.message));
+  }, []);
 
   const loadProjects = async (rawUserId) => {
     const userId = rawUserId.trim();
