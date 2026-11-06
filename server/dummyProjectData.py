@@ -62,7 +62,7 @@ class InMemoryProjectCollection:
         self._documents.append(deepcopy(document))
 
     def update_one(self, query, update):
-        """Apply a $addToSet update to the first matching document.
+        """Apply a $addToSet or $pull update to the first matching document.
         
         Return as object with matched_count and modified_count, like
         PyMongo's UpdateResult, so caller can tell what happened."""
@@ -75,6 +75,12 @@ class InMemoryProjectCollection:
                     if value not in values:
                         values.append(value)
                         modified = 1
+                # $pull removes every copy of the value from the list.
+                for field, value in update.get("$pull", {}).items():
+                    values = document.get(field, [])
+                    if value in values:
+                        document[field] = [v for v in values if v != value]
+                        modified = 1
                 return SimpleNamespace(matched_count=1, modified_count=modified)
+
         return SimpleNamespace(matched_count=0, modified_count=0)
-        

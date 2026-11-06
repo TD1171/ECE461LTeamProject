@@ -36,6 +36,17 @@ class ProjectNotFoundError(Exception):
 class AlreadyMemberError(Exception):
     """Raised when a user tries to join a project they already belong to."""
 
+class NotMemberError(Exception):
+    """Raised when a user tries to leave a project they do not belong to."""
+
+class HardwareStillCheckedOutError(Exception):
+    """Raised when the last member tries to leave while hardware is out."""
+
+
+def _holdsHardware(document):
+    """True if the project has any hardware checked out (any qty above 0)."""
+    return any(qty > 0 for qty in document.get("hwSets", {}).values())
+
 def serializeProject(document):
     """Convert a stored project document into the public API shape."""
     if document is None:
@@ -135,7 +146,6 @@ def listUserProjects(collection, userId):
     ]
     return sorted(projects, key=lambda project: project["projectName"].lower())
 
-# --- Not yet implemented (see issues #5 and #18-#24) -----------------------
 
 def addUser(collection, projectId, userId):
     """Add a user to the specified project (issue #5: Join a Project).
@@ -166,6 +176,53 @@ def addUser(collection, projectId, userId):
         raise AlreadyMemberError(
             f"You are already a member of project '{projectId}'."
         )
+
+    return queryProject(collection, projectId)
+
+def removeUser(collection, projectId, userId):
+    """Remove a user from the specified project (issue #9: Leave a Project).
+
+    Team decisions:
+    - Last member leaves: the project is kept with an empty members list,
+      not deleted, so its ID and history are not lost by accident.
+    - Hardware still checked out: the LAST member cannot leave while the
+      project holds hardware, or nobody would be left to check it back in.
+      Other members can leave freely, since the hardware stays with the
+      project. (Matters once checkOutHW/checkInHW from #18-#24 exist.)
+
+    Returns the updated project. Raises ValueError for missing input,
+    ProjectNotFoundError for an unknown projectId, NotMemberError if the user
+    does not belong to it, and HardwareStillCheckedOutError as above.
+    """
+    if not isinstance(userId, str) or not userId.strip():
+        raise ValueError("User ID is required.")
+    userId = userId.strip()
+
+    if not isinstance(projectId, str) or not projectId.strip():
+        raise ValueError("Project ID is required.")
+    projectId = projectId.strip()
+
+    project = collection.find_one({"projectId": projectId})
+    if project is None:
+        raise ProjectNotFoundError(f"Project '{projectId}' was not found.")
+    if userId not in project.get("users", []):
+        raise NotMemberError(f"You are not a member of project '{projectId}'.")
+
+    isLastMember = project.get("users", []) == [userId]
+    if isLastMember and _holdsHardware(project):
+        raise HardwareStillCheckedOutError(
+            "You are the last member, so check in this project's hardware "
+            "before leaving."
+        )
+
+    # The update still only matches when the user IS listed, so if another
+    # request removed them a moment ago we report it instead of double-leaving.
+    result = collection.update_one(
+        {"projectId": projectId, "users": userId},
+        {"$pull": {"users": userId}},
+    )
+    if result.matched_count == 0:
+        raise NotMemberError(f"You are not a member of project '{projectId}'.")
 
     return queryProject(collection, projectId)
 

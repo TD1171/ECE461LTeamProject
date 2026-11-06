@@ -3,8 +3,9 @@ import { Link } from "react-router-dom";
 
 import { joinProject } from "../api/projectsApi";
 import Button from "../components/Button";
+import { getSignedInUserId } from "../session";
 
-const EMPTY_FORM = { projectId: "", userId: "" };
+const EMPTY_FORM = { projectId: "" };
 
 function JoinProjectPage() {
   const [form, setForm] = useState(EMPTY_FORM);
@@ -23,15 +24,15 @@ function JoinProjectPage() {
     setJoinedProject(null);
 
     const projectId = form.projectId.trim();
-    const userId = form.userId.trim();
-    if (!projectId || !userId) {
-      setError("Project ID and user ID are required.");
+    if (!projectId) {
+      setError("Project ID is required.");
       return;
     }
 
     setSubmitting(true);
     try {
-      const project = await joinProject({ projectId, userId });
+      // Join as whoever is signed in.
+      const project = await joinProject({ projectId, userId: getSignedInUserId() });
       setJoinedProject(project);
       setForm(EMPTY_FORM);
     } catch (requestError) {
@@ -59,20 +60,6 @@ function JoinProjectPage() {
               maxLength={32}
               placeholder="Project ID shared by a teammate"
               value={form.projectId}
-              onChange={updateField}
-            />
-          </div>
-
-          {/* TODO: remove this field and use the signed-in user's ID once
-              Sign In (#2) is done. */}
-          <div className="field-row">
-            <label htmlFor="join-user-id">User ID</label>
-            <input
-              id="join-user-id"
-              name="userId"
-              type="text"
-              placeholder="Your user ID"
-              value={form.userId}
               onChange={updateField}
             />
           </div>

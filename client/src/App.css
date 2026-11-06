@@ -372,6 +372,13 @@
   max-width: none;
 }
 
+.signed-in-as {
+  margin: 0;
+  padding: 0 24px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 /* Small screens: buttons go on top, list underneath. */
 @media (max-width: 800px) {
   .dashboard-layout {
@@ -517,6 +524,14 @@
   margin: 12px 0 0;
   padding-left: 20px;
 }
+
+.project-hardware-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.project-hardware-table th,
+.project-hardware-table td { border-bottom: 1px solid #dddddd; padding: 10px 8px; text-align: left; }
+.project-hardware-table thead th { color: var(--muted); font-size: 0.78rem; font-weight: 600; text-transform: uppercase; }
+.leave-project { margin-top: 24px; }
+.button-danger { border-color: var(--danger); color: var(--danger); }
+.button-danger:hover:not(:disabled) { background: var(--danger); color: #ffffff; }
 
 /* Small screens: members drop below everything else. */
 @media (max-width: 800px) {

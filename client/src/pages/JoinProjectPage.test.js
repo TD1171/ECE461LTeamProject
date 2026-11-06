@@ -3,7 +3,13 @@ import { MemoryRouter } from "react-router-dom";
 
 import JoinProjectPage from "./JoinProjectPage";
 
+beforeEach(() => {
+  // Pretend "sydney" signed in, the same way LoginPage does.
+  sessionStorage.setItem("dashboardUserId", "sydney");
+});
+
 afterEach(() => {
+  sessionStorage.clear();
   jest.restoreAllMocks();
 });
 
@@ -25,9 +31,6 @@ function mockFetch(status, body) {
 function fillAndSubmit() {
   fireEvent.change(screen.getByLabelText("Project ID"), {
     target: { value: " robot-arm " },
-  });
-  fireEvent.change(screen.getByLabelText("User ID"), {
-    target: { value: "sydney" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Join Project" }));
 }
@@ -66,7 +69,7 @@ test("shows the server's error for an unknown project", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent("not found");
 });
 
-test("requires project ID and user ID before calling the server", async () => {
+test("requires a project ID before calling the server", async () => {
   jest.spyOn(global, "fetch");
   renderPage();
 
@@ -74,6 +77,12 @@ test("requires project ID and user ID before calling the server", async () => {
 
   expect(await screen.findByRole("alert")).toHaveTextContent("required");
   expect(global.fetch).not.toHaveBeenCalled();
+});
+
+test("has no user ID field; the signed-in user is used", () => {
+  renderPage();
+
+  expect(screen.queryByLabelText(/user id/i)).toBeNull();
 });
 
 test("links back to the dashboard", () => {
