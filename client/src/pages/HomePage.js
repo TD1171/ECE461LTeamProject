@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { fetchUserProjects } from "../api/projectsApi";
+import JoinProjectForm from "../components/JoinProjectForm";
 import ProjectCard from "../components/ProjectCard";
 import { getSignedInUserId } from "../session";
 
@@ -14,6 +15,10 @@ function HomePage() {
   const [error, setError] = useState("");
   // Only one project's snippet is open at a time; null means none.
   const [expandedId, setExpandedId] = useState(null);
+  // Join Project tab starts closed; clicking it opens the form in place.
+  const [joinOpen, setJoinOpen] = useState(false);
+  // Bumped after a successful join so the project list reloads.
+  const [reloadKey, setReloadKey] = useState(0);
 
   const toggleProject = (projectId) => {
     setExpandedId((current) => (current === projectId ? null : projectId));
@@ -42,10 +47,11 @@ function HomePage() {
     return () => {
       active = false;
     };
-  }, [userId]);
+  }, [userId, reloadKey]);
 
   return (
     <section className="checkout-page">
+      {/* Title on the left, who is signed in on the right. */}
       <header className="page-header">
         <h1 className="page-title">My Dashboard</h1>
         <p className="signed-in-as">Signed in as <strong>{userId}</strong></p>
@@ -53,7 +59,6 @@ function HomePage() {
 
       <div className="checkout-content">
         <p>Welcome to HardwareShare! Manage your projects and hardware resources.</p>
-  
 
         <div>
           <h2>My Projects</h2>
@@ -84,10 +89,28 @@ function HomePage() {
               )}
             </div>
 
-            <nav className="dashboard-links dashboard-actions" aria-label="Project actions">
+            <div className="dashboard-links dashboard-actions" aria-label="Project actions">
               <Link to="/projects/new">+ Create Project</Link>
-              <Link to="/projects/join">Join Project</Link>
-            </nav>
+
+              {/* Join Project is a tab: click to open the form right here. */}
+              <div className="join-tab">
+                <button
+                  type="button"
+                  className="join-tab-toggle"
+                  aria-expanded={joinOpen}
+                  aria-controls="join-tab-panel"
+                  onClick={() => setJoinOpen((open) => !open)}
+                >
+                  Join Project
+                  <span aria-hidden="true">{joinOpen ? " ▾" : " ▸"}</span>
+                </button>
+                {joinOpen && (
+                  <div className="join-tab-panel" id="join-tab-panel">
+                    <JoinProjectForm onJoined={() => setReloadKey((key) => key + 1)} />
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>

@@ -1,95 +1,183 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import HomePage from "./HomePage";
 
-import { fetchUserProjects } from "../api/projectsApi";
-import ProjectCard from "../components/ProjectCard";
-import { getSignedInUserId } from "../session";
+beforeEach(() => {
+  // Pretend "sydney" signed in, the same way LoginPage does.
+  sessionStorage.setItem("dashboardUserId", "sydney");
+});
 
-function HomePage() {
-  // RequireSignIn only lets signed-in users reach this page.
-  const userId = getSignedInUserId();
-  const [projects, setProjects] = useState([]);
-  const [loaded, setLoaded] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  // Only one project's snippet is open at a time; null means none.
-  const [expandedId, setExpandedId] = useState(null);
+afterEach(() => {
+  jest.restoreAllMocks();
+  sessionStorage.clear();
+});
 
-  const toggleProject = (projectId) => {
-    setExpandedId((current) => (current === projectId ? null : projectId));
-  };
-
-  // Load the signed-in user's projects as soon as the page opens.
-  useEffect(() => {
-    // Ignore a slow response if the page has already closed.
-    let active = true;
-    setLoading(true);
-    setError("");
-
-    fetchUserProjects(userId)
-      .then((userProjects) => {
-        if (!active) return;
-        setProjects(userProjects);
-        setLoaded(true);
-      })
-      .catch((requestError) => {
-        if (active) setError(requestError.message);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [userId]);
-
-  return (
-    <section className="checkout-page">
-      <h1 className="page-title">My Dashboard</h1>
-
-      <div className="checkout-content">
-        <p>Welcome to HardwareShare! Manage your projects and hardware resources.</p>
-        <p className="signed-in-as">Signed in as <strong>{userId}</strong></p>
-
-        <div>
-          <h2>My Projects</h2>
-
-          {/* Two columns: project list on the left, actions on the right. */}
-          <div className="dashboard-layout">
-            <div className="dashboard-main">
-              {loading && <p className="loading-message">Loading your projects...</p>}
-              {error && <p className="error-banner" role="alert">{error}</p>}
-
-              {loaded && !loading && projects.length === 0 && (
-                <p className="empty-state">
-                  You don't belong to any projects yet. Create one or join one.
-                </p>
-              )}
-
-              {projects.length > 0 && (
-                <ul className="project-list" aria-label="My projects">
-                  {projects.map((project) => (
-                    <ProjectCard
-                      key={project.projectId}
-                      project={project}
-                      expanded={expandedId === project.projectId}
-                      onToggle={() => toggleProject(project.projectId)}
-                    />
-                  ))}
-                </ul>
-              )}
-            </div>
-
-            <nav className="dashboard-links dashboard-actions" aria-label="Project actions">
-              <Link to="/projects/new">+ Create Project</Link>
-              <Link to="/projects/join">Join Project</Link>
-            </nav>
-          </div>
-        </div>
-      </div>
-    </section>
+function renderPage() {
+  render(
+    <MemoryRouter
+      initialEntries={["/dashboard"]}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
+      <Routes>
+        <Route path="/dashboard" element={<HomePage />} />
+        <Route path="/projects/:projectId" element={<p>Project page</p>} />
+      </Routes>
+    </MemoryRouter>
   );
 }
 
-export default HomePage;
+function mockFetch(status, body) {
+  return jest.spyOn(global, "fetch").mockResolvedValue({
+    ok: status >= 200 && status < 300,
+    json: () => Promise.resolve(body),
+  });
+}
+
+const PROJECTS = [
+  {
+    projectName: "Robot Arm",
+    projectId: "robot-arm",
+    description: "Senior design prototype",
+    hwSets: {},
+    users: ["sydney", "alice"],
+  },
+  {
+    projectName: "Solo Project",
+    projectId: "solo",
+    description: "",
+    hwSets: {},
+    users: ["sydney"],
+  },
+];
+
+test("dashboard displays projects section and create project link", async () => {
+  mockFetch(200, { projects: [] });
+  renderPage();
+
+  expect(screen.getByRole("heading", { name: "My Dashboard" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "My Projects" })).toBeTruthy();
+  expect(
+    screen.getByRole("link", { name: /create project/i }).getAttribute("href")
+  ).toBe("/projects/new");
+  await screen.findByText(/don't belong to any projects yet/i); // let the fetch finish
+});
+
+test("Join Project tab is closed until it is clicked", async () => {
+  mockFetch(200, { projects: [] });
+  renderPage();
+  await screen.findByText(/don't belong to any projects yet/i);
+
+  const tab = screen.getByRole("button", { name: /Join Project/ });
+  expect(tab.getAttribute("aria-expanded")).toBe("false");
+  expect(screen.queryByLabelText("Project ID")).toBeNull();
+
+  fireEvent.click(tab);
+  expect(tab.getAttribute("aria-expanded")).toBe("true");
+  expect(screen.getByLabelText("Project ID")).toBeTruthy();
+
+  fireEvent.click(tab);
+  expect(screen.queryByLabelText("Project ID")).toBeNull();
+});
+
+test("joining from the tab adds the project to the list right away", async () => {
+  // First load: no projects. Join: succeeds. Reload: the joined project.
+  const fetchSpy = jest.spyOn(global, "fetch")
+    .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ projects: [] }) })
+    .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(PROJECTS[0]) })
+    .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ projects: [PROJECTS[0]] }) });
+  renderPage();
+  await screen.findByText(/don't belong to any projects yet/i);
+
+  fireEvent.click(screen.getByRole("button", { name: /Join Project/ }));
+  fireEvent.change(screen.getByLabelText("Project ID"), {
+    target: { value: " robot-arm " },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Join" }));
+
+  expect(await screen.findByRole("link", { name: "Robot Arm" })).toBeTruthy();
+  expect(screen.getByRole("status").textContent).toMatch(/Joined "Robot Arm"/);
+  expect(fetchSpy.mock.calls[1][0]).toBe("/api/projects/robot-arm/users");
+  expect(JSON.parse(fetchSpy.mock.calls[1][1].body)).toEqual({ userId: "sydney" });
+  expect(fetchSpy.mock.calls[2][0]).toBe("/api/users/sydney/projects");
+});
+
+test("has no user ID field and shows who is signed in", async () => {
+  mockFetch(200, { projects: [] });
+  renderPage();
+
+  expect(screen.queryByLabelText(/user id/i)).toBeNull();
+  expect(screen.getByText("sydney")).toBeTruthy();
+  await screen.findByText(/don't belong to any projects yet/i);
+});
+
+test("loads the signed-in user's projects automatically", async () => {
+  const fetchSpy = mockFetch(200, { projects: PROJECTS });
+  renderPage();
+
+  expect(await screen.findByRole("link", { name: "Robot Arm" })).toBeTruthy();
+  expect(screen.getByRole("link", { name: "Solo Project" })).toBeTruthy();
+  expect(screen.getByText(/2 members/)).toBeTruthy();
+  expect(screen.getByText(/1 member$/)).toBeTruthy();
+  expect(fetchSpy.mock.calls[0][0]).toBe("/api/users/sydney/projects");
+});
+
+test("shows an empty message when the user has no projects", async () => {
+  mockFetch(200, { projects: [] });
+  renderPage();
+
+  expect(
+    await screen.findByText(/don't belong to any projects yet/i)
+  ).toBeTruthy();
+});
+
+test("shows the server error if the projects can't be loaded", async () => {
+  mockFetch(503, { error: "Projects are temporarily unavailable." });
+  renderPage();
+
+  expect((await screen.findByRole("alert")).textContent).toBe(
+    "Projects are temporarily unavailable."
+  );
+  expect(screen.queryByText(/don't belong to any projects yet/i)).toBeNull();
+});
+
+test("clicking a project card shows a snippet, clicking again hides it", async () => {
+  mockFetch(200, { projects: PROJECTS });
+  renderPage();
+
+  await screen.findByRole("link", { name: "Robot Arm" });
+  expect(screen.queryByText("Senior design prototype")).toBeNull();
+
+  fireEvent.click(screen.getByText(/Project ID: robot-arm/));
+  expect(screen.getByText("Senior design prototype")).toBeTruthy();
+  expect(screen.getByText("sydney, alice")).toBeTruthy();
+  expect(
+    screen.getByRole("button", { name: "Hide details for Robot Arm" })
+      .getAttribute("aria-expanded")
+  ).toBe("true");
+
+  fireEvent.click(screen.getByText(/Project ID: robot-arm/));
+  expect(screen.queryByText("Senior design prototype")).toBeNull();
+});
+
+test("only one snippet is open at a time", async () => {
+  mockFetch(200, { projects: PROJECTS });
+  renderPage();
+  await screen.findByRole("link", { name: "Robot Arm" });
+
+  fireEvent.click(screen.getByRole("button", { name: "Show details for Robot Arm" }));
+  fireEvent.click(screen.getByRole("button", { name: "Show details for Solo Project" }));
+
+  expect(screen.queryByText("Senior design prototype")).toBeNull();
+  expect(screen.getByText("No description yet.")).toBeTruthy();
+});
+
+test("clicking the project name goes to the project page", async () => {
+  mockFetch(200, { projects: PROJECTS });
+  renderPage();
+
+  const nameLink = await screen.findByRole("link", { name: "Robot Arm" });
+  expect(nameLink.getAttribute("href")).toBe("/projects/robot-arm");
+
+  fireEvent.click(nameLink);
+  expect(screen.getByText("Project page")).toBeTruthy();
+});
