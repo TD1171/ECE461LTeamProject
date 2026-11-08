@@ -1,131 +1,61 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { fetchProjects, fetchUserProjects, joinProject } from "../api/projectsApi";
-import Button from "../components/Button";
+import { fetchUserProjects } from "../api/projectsApi";
+import JoinProjectForm from "../components/JoinProjectForm";
 import ProjectCard from "../components/ProjectCard";
-
-// Remembers the last user ID so the list reloads when you come back from
-// Create or Join. TODO: remove once Sign In (#2) gives us the real user.
-const USER_ID_KEY = "dashboardUserId";
-
-const INITIAL_HARDWARE = [
-  { name: "HWSet1", capacity: 100, available: 100 },
-  { name: "HWSet2", capacity: 100, available: 100 },
-];
-
-function readSavedUserId() {
-  try {
-    return sessionStorage.getItem(USER_ID_KEY) || "";
-  } catch {
-    return "";
-  }
-}
-
-function saveUserId(userId) {
-  try {
-    sessionStorage.setItem(USER_ID_KEY, userId);
-  } catch {
-    // Storage can be blocked (private mode); the page still works without it.
-  }
-}
+import { getSignedInUserId } from "../session";
 
 function HomePage() {
-  const [userIdInput, setUserIdInput] = useState(readSavedUserId);
-  const [loadedUserId, setLoadedUserId] = useState("");
+  // RequireSignIn only lets signed-in users reach this page.
+  const userId = getSignedInUserId();
   const [projects, setProjects] = useState([]);
-  const [allProjects, setAllProjects] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [hardware, setHardware] = useState(INITIAL_HARDWARE);
+  // Only one project's snippet is open at a time; null means none.
+  const [expandedId, setExpandedId] = useState(null);
+  // Join Project tab starts closed; clicking it opens the form in place.
+  const [joinOpen, setJoinOpen] = useState(false);
+  // Bumped after a successful join so the project list reloads.
+  const [reloadKey, setReloadKey] = useState(0);
 
-  const updateHardware = (projectId, hardwareName, quantityChange) => {
-    setHardware((items) => items.map((item) => (
-      item.name === hardwareName
-        ? {
-          ...item,
-          available: Math.min(item.capacity, item.available - quantityChange),
-        }
-        : item
-    )));
-    setProjects((items) => items.map((project) => (
-      project.projectId === projectId
-        ? {
-          ...project,
-          hwSets: {
-            ...project.hwSets,
-            [hardwareName]: (project.hwSets?.[hardwareName] || 0) + quantityChange,
-          },
-        }
-        : project
-    )));
+  const toggleProject = (projectId) => {
+    setExpandedId((current) => (current === projectId ? null : projectId));
   };
 
-  const loadProjects = async (rawUserId) => {
-    const userId = rawUserId.trim();
-    setError("");
-    if (!userId) {
-      setError("Enter your user ID to see your projects.");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const [userProjects, everyProject] = await Promise.all([
-        fetchUserProjects(userId),
-        fetchProjects(),
-      ]);
-      setProjects(userProjects);
-      setAllProjects(everyProject);
-      setLoadedUserId(userId);
-      saveUserId(userId);
-    } catch (requestError) {
-      setProjects([]);
-      setAllProjects([]);
-      setLoadedUserId("");
-      setError(requestError.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Load right away if we already know who the user is.
+  // Load the signed-in user's projects as soon as the page opens.
   useEffect(() => {
-    const savedUserId = readSavedUserId();
-    if (savedUserId) {
-      loadProjects(savedUserId);
-    }
-  }, []); // Empty list: run once when the page opens.
-
-  const handleSubmit = (event) => {
-    event.preventDefault();
-    loadProjects(userIdInput);
-  };
-
-  const joinAvailableProject = async (projectId) => {
+    // Ignore a slow response if the page has already closed.
+    let active = true;
+    setLoading(true);
     setError("");
-    try {
-      const joinedProject = await joinProject({
-        projectId,
-        userId: loadedUserId,
-      });
-      setProjects((items) => [...items, joinedProject]);
-      setAllProjects((items) => items.map((project) => (
-        project.projectId === projectId ? joinedProject : project
-      )));
-    } catch (requestError) {
-      setError(requestError.message);
-    }
-  };
 
-  const projectIds = new Set(projects.map((project) => project.projectId));
-  const availableProjects = allProjects.filter(
-    (project) => !projectIds.has(project.projectId)
-  );
+    fetchUserProjects(userId)
+      .then((userProjects) => {
+        if (!active) return;
+        setProjects(userProjects);
+        setLoaded(true);
+      })
+      .catch((requestError) => {
+        if (active) setError(requestError.message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [userId, reloadKey]);
 
   return (
     <section className="checkout-page">
-      <h1 className="page-title">My Dashboard</h1>
+      {/* Title on the left, who is signed in on the right. */}
+      <header className="page-header">
+        <h1 className="page-title">My Dashboard</h1>
+        <p className="signed-in-as">Signed in as <strong>{userId}</strong></p>
+      </header>
 
       <div className="checkout-content">
         <p>Welcome to HardwareShare! Manage your projects and hardware resources.</p>
@@ -136,28 +66,10 @@ function HomePage() {
           {/* Two columns: project list on the left, actions on the right. */}
           <div className="dashboard-layout">
             <div className="dashboard-main">
-              {/* TODO: remove this form and use the signed-in user's ID once
-                  Sign In (#2) is done. */}
-              <form className="user-id-form" onSubmit={handleSubmit}>
-                <div className="field-row">
-                  <label htmlFor="dashboard-user-id">User ID</label>
-                  <input
-                    id="dashboard-user-id"
-                    name="userId"
-                    type="text"
-                    placeholder="Your user ID"
-                    value={userIdInput}
-                    onChange={(event) => setUserIdInput(event.target.value)}
-                  />
-                </div>
-                <Button type="submit" variant="primary" disabled={loading}>
-                  {loading ? "Loading..." : "Show My Projects"}
-                </Button>
-              </form>
-
+              {loading && <p className="loading-message">Loading your projects...</p>}
               {error && <p className="error-banner" role="alert">{error}</p>}
 
-              {loadedUserId && !loading && projects.length === 0 && (
+              {loaded && !loading && projects.length === 0 && (
                 <p className="empty-state">
                   You don't belong to any projects yet. Create one or join one.
                 </p>
@@ -169,36 +81,36 @@ function HomePage() {
                     <ProjectCard
                       key={project.projectId}
                       project={project}
-                      hardware={hardware}
-                      onUpdateHardware={updateHardware}
+                      expanded={expandedId === project.projectId}
+                      onToggle={() => toggleProject(project.projectId)}
                     />
                   ))}
                 </ul>
               )}
-
-              {loadedUserId && availableProjects.length > 0 && (
-                <>
-                  <h2 className="available-projects-title">Available Projects</h2>
-                  <ul className="project-list" aria-label="Available projects">
-                    {availableProjects.map((project) => (
-                      <ProjectCard
-                        key={project.projectId}
-                        project={project}
-                        hardware={hardware}
-                        canManage={false}
-                        onJoin={joinAvailableProject}
-                        onUpdateHardware={updateHardware}
-                      />
-                    ))}
-                  </ul>
-                </>
-              )}
             </div>
 
-            <nav className="dashboard-links dashboard-actions" aria-label="Project actions">
+            <div className="dashboard-links dashboard-actions" aria-label="Project actions">
               <Link to="/projects/new">+ Create Project</Link>
-              <Link to="/projects/join">Join Project</Link>
-            </nav>
+
+              {/* Join Project is a tab: click to open the form right here. */}
+              <div className="join-tab">
+                <button
+                  type="button"
+                  className="join-tab-toggle"
+                  aria-expanded={joinOpen}
+                  aria-controls="join-tab-panel"
+                  onClick={() => setJoinOpen((open) => !open)}
+                >
+                  Join Project
+                  <span aria-hidden="true">{joinOpen ? " ▾" : " ▸"}</span>
+                </button>
+                {joinOpen && (
+                  <div className="join-tab-panel" id="join-tab-panel">
+                    <JoinProjectForm onJoined={() => setReloadKey((key) => key + 1)} />
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>

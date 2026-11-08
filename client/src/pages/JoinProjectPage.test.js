@@ -3,8 +3,14 @@ import { MemoryRouter } from "react-router-dom";
 
 import JoinProjectPage from "./JoinProjectPage";
 
+beforeEach(() => {
+  // Pretend "sydney" signed in, the same way LoginPage does.
+  sessionStorage.setItem("dashboardUserId", "sydney");
+});
+
 afterEach(() => {
   jest.restoreAllMocks();
+  sessionStorage.clear();
 });
 
 function renderPage() {
@@ -26,13 +32,10 @@ function fillAndSubmit() {
   fireEvent.change(screen.getByLabelText("Project ID"), {
     target: { value: " robot-arm " },
   });
-  fireEvent.change(screen.getByLabelText("User ID"), {
-    target: { value: "sydney" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "Join Project" }));
+  fireEvent.click(screen.getByRole("button", { name: "Join" }));
 }
 
-test("joins a project and shows a confirmation", async () => {
+test("joins as the signed-in user and shows a confirmation", async () => {
   mockFetch(200, { projectName: "Robot Arm", projectId: "robot-arm" });
   renderPage();
 
@@ -46,6 +49,12 @@ test("joins a project and shows a confirmation", async () => {
       body: JSON.stringify({ userId: "sydney" }),
     })
   );
+});
+
+test("does not ask for a user ID", () => {
+  renderPage();
+
+  expect(screen.queryByLabelText("User ID")).toBeNull();
 });
 
 test("shows the server's error when already a member", async () => {
@@ -66,11 +75,11 @@ test("shows the server's error for an unknown project", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent("not found");
 });
 
-test("requires project ID and user ID before calling the server", async () => {
+test("requires a project ID before calling the server", async () => {
   jest.spyOn(global, "fetch");
   renderPage();
 
-  fireEvent.click(screen.getByRole("button", { name: "Join Project" }));
+  fireEvent.click(screen.getByRole("button", { name: "Join" }));
 
   expect(await screen.findByRole("alert")).toHaveTextContent("required");
   expect(global.fetch).not.toHaveBeenCalled();

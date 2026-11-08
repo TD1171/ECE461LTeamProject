@@ -30,6 +30,13 @@ export async function joinProject({ projectId, userId }) {
   });
 }
 
+export async function leaveProject({ projectId, userId }) {
+  return requestJson(
+    `/api/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(userId)}`,
+    { method: "DELETE" }
+  );
+}
+
 export async function fetchProject(projectId) {
   return requestJson(`/api/projects/${encodeURIComponent(projectId)}`);
 }

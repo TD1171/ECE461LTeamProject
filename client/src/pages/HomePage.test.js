@@ -1,6 +1,11 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import HomePage from "./HomePage";
+
+beforeEach(() => {
+  // Pretend "sydney" signed in, the same way LoginPage does.
+  sessionStorage.setItem("dashboardUserId", "sydney");
+});
 
 afterEach(() => {
   jest.restoreAllMocks();
@@ -9,8 +14,14 @@ afterEach(() => {
 
 function renderPage() {
   render(
-    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <HomePage />
+    <MemoryRouter
+      initialEntries={["/dashboard"]}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
+      <Routes>
+        <Route path="/dashboard" element={<HomePage />} />
+        <Route path="/projects/:projectId" element={<p>Project page</p>} />
+      </Routes>
     </MemoryRouter>
   );
 }
@@ -22,19 +33,12 @@ function mockFetch(status, body) {
   });
 }
 
-function submitUserId(userId) {
-  fireEvent.change(screen.getByLabelText("User ID"), {
-    target: { value: userId },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "Show My Projects" }));
-}
-
 const PROJECTS = [
   {
     projectName: "Robot Arm",
     projectId: "robot-arm",
     description: "Senior design prototype",
-    hwSets: { HWSet1: 5 },
+    hwSets: {},
     users: ["sydney", "alice"],
   },
   {
@@ -46,40 +50,72 @@ const PROJECTS = [
   },
 ];
 
-test("dashboard displays projects section and create project link", () => {
+test("dashboard displays projects section and create project link", async () => {
+  mockFetch(200, { projects: [] });
   renderPage();
 
+  expect(screen.getByRole("heading", { name: "My Dashboard" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "My Projects" })).toBeTruthy();
   expect(
-    screen.getByRole("heading", { name: "My Dashboard" })
-  ).toBeTruthy();
+    screen.getByRole("link", { name: /create project/i }).getAttribute("href")
+  ).toBe("/projects/new");
+  await screen.findByText(/don't belong to any projects yet/i); // let the fetch finish
+});
 
-  expect(
-    screen.getByRole("heading", { name: "My Projects" })
-  ).toBeTruthy();
+test("Join Project tab is closed until it is clicked", async () => {
+  mockFetch(200, { projects: [] });
+  renderPage();
+  await screen.findByText(/don't belong to any projects yet/i);
 
-  const createProjectLink = screen.getByRole("link", {
-    name: /create project/i,
+  const tab = screen.getByRole("button", { name: /Join Project/ });
+  expect(tab.getAttribute("aria-expanded")).toBe("false");
+  expect(screen.queryByLabelText("Project ID")).toBeNull();
+
+  fireEvent.click(tab);
+  expect(tab.getAttribute("aria-expanded")).toBe("true");
+  expect(screen.getByLabelText("Project ID")).toBeTruthy();
+
+  fireEvent.click(tab);
+  expect(screen.queryByLabelText("Project ID")).toBeNull();
+});
+
+test("joining from the tab adds the project to the list right away", async () => {
+  // First load: no projects. Join: succeeds. Reload: the joined project.
+  const fetchSpy = jest.spyOn(global, "fetch")
+    .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ projects: [] }) })
+    .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(PROJECTS[0]) })
+    .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ projects: [PROJECTS[0]] }) });
+  renderPage();
+  await screen.findByText(/don't belong to any projects yet/i);
+
+  fireEvent.click(screen.getByRole("button", { name: /Join Project/ }));
+  fireEvent.change(screen.getByLabelText("Project ID"), {
+    target: { value: " robot-arm " },
   });
+  fireEvent.click(screen.getByRole("button", { name: "Join" }));
 
-  expect(createProjectLink.getAttribute("href")).toBe("/projects/new");
+  expect(await screen.findByRole("link", { name: "Robot Arm" })).toBeTruthy();
+  expect(screen.getByRole("status").textContent).toMatch(/Joined "Robot Arm"/);
+  expect(fetchSpy.mock.calls[1][0]).toBe("/api/projects/robot-arm/users");
+  expect(JSON.parse(fetchSpy.mock.calls[1][1].body)).toEqual({ userId: "sydney" });
+  expect(fetchSpy.mock.calls[2][0]).toBe("/api/users/sydney/projects");
 });
 
-test("dashboard links to the join project page", () => {
+test("has no user ID field and shows who is signed in", async () => {
+  mockFetch(200, { projects: [] });
   renderPage();
 
-  const joinProjectLink = screen.getByRole("link", { name: /join project/i });
-
-  expect(joinProjectLink.getAttribute("href")).toBe("/projects/join");
+  expect(screen.queryByLabelText(/user id/i)).toBeNull();
+  expect(screen.getByText("sydney")).toBeTruthy();
+  await screen.findByText(/don't belong to any projects yet/i);
 });
 
-test("shows every project the user belongs to", async () => {
+test("loads the signed-in user's projects automatically", async () => {
   const fetchSpy = mockFetch(200, { projects: PROJECTS });
   renderPage();
 
-  submitUserId(" sydney ");
-
-  expect(await screen.findByRole("heading", { name: "Robot Arm" })).toBeTruthy();
-  expect(screen.getByRole("heading", { name: "Solo Project" })).toBeTruthy();
+  expect(await screen.findByRole("link", { name: "Robot Arm" })).toBeTruthy();
+  expect(screen.getByRole("link", { name: "Solo Project" })).toBeTruthy();
   expect(screen.getByText(/2 members/)).toBeTruthy();
   expect(screen.getByText(/1 member$/)).toBeTruthy();
   expect(fetchSpy.mock.calls[0][0]).toBe("/api/users/sydney/projects");
@@ -89,164 +125,59 @@ test("shows an empty message when the user has no projects", async () => {
   mockFetch(200, { projects: [] });
   renderPage();
 
-  submitUserId("newbie");
-
   expect(
     await screen.findByText(/don't belong to any projects yet/i)
   ).toBeTruthy();
 });
 
-test("shows the server error for an unknown user", async () => {
-  mockFetch(404, { error: "User 'ghost' was not found." });
+test("shows the server error if the projects can't be loaded", async () => {
+  mockFetch(503, { error: "Projects are temporarily unavailable." });
   renderPage();
-
-  submitUserId("ghost");
 
   expect((await screen.findByRole("alert")).textContent).toBe(
-    "User 'ghost' was not found."
+    "Projects are temporarily unavailable."
   );
+  expect(screen.queryByText(/don't belong to any projects yet/i)).toBeNull();
 });
 
-test("asks for a user ID instead of calling the server when blank", () => {
-  const fetchSpy = mockFetch(200, { projects: [] });
-  renderPage();
-
-  submitUserId("   ");
-
-  expect(screen.getByRole("alert").textContent).toBe(
-    "Enter your user ID to see your projects."
-  );
-  expect(fetchSpy).not.toHaveBeenCalled();
-});
-
-test("reloads the list automatically for a remembered user", async () => {
-  sessionStorage.setItem("dashboardUserId", "sydney");
+test("clicking a project card shows a snippet, clicking again hides it", async () => {
   mockFetch(200, { projects: PROJECTS });
   renderPage();
 
-  expect(await screen.findByRole("heading", { name: "Robot Arm" })).toBeTruthy();
-});
+  await screen.findByRole("link", { name: "Robot Arm" });
+  expect(screen.queryByText("Senior design prototype")).toBeNull();
 
-test("shows project details directly on the dashboard", async () => {
-  mockFetch(200, { projects: PROJECTS });
-  renderPage();
-  submitUserId("sydney");
-
-  await screen.findByRole("heading", { name: "Robot Arm" });
+  fireEvent.click(screen.getByText(/Project ID: robot-arm/));
   expect(screen.getByText("Senior design prototype")).toBeTruthy();
   expect(screen.getByText("sydney, alice")).toBeTruthy();
+  expect(
+    screen.getByRole("button", { name: "Hide details for Robot Arm" })
+      .getAttribute("aria-expanded")
+  ).toBe("true");
+
+  fireEvent.click(screen.getByText(/Project ID: robot-arm/));
+  expect(screen.queryByText("Senior design prototype")).toBeNull();
+});
+
+test("only one snippet is open at a time", async () => {
+  mockFetch(200, { projects: PROJECTS });
+  renderPage();
+  await screen.findByRole("link", { name: "Robot Arm" });
+
+  fireEvent.click(screen.getByRole("button", { name: "Show details for Robot Arm" }));
+  fireEvent.click(screen.getByRole("button", { name: "Show details for Solo Project" }));
+
+  expect(screen.queryByText("Senior design prototype")).toBeNull();
   expect(screen.getByText("No description yet.")).toBeTruthy();
-  expect(screen.queryByText(/Open project/)).toBeNull();
 });
 
-test("checks hardware out directly from a project card", async () => {
+test("clicking the project name goes to the project page", async () => {
   mockFetch(200, { projects: PROJECTS });
   renderPage();
-  submitUserId("sydney");
 
-  const project = (await screen.findByRole("heading", { name: "Robot Arm" })).closest("li");
-  const row = within(project).getByLabelText("HWSet1 controls");
-  fireEvent.change(within(row).getByLabelText(/quantity for hwset1/i), {
-    target: { value: "3" },
-  });
-  fireEvent.click(within(row).getByRole("button", { name: "Check Out" }));
+  const nameLink = await screen.findByRole("link", { name: "Robot Arm" });
+  expect(nameLink.getAttribute("href")).toBe("/projects/robot-arm");
 
-  expect(within(row).getByText("Available: 97 / 100")).toBeTruthy();
-  expect(within(row).getByRole("status").textContent).toBe("Checked out 3 unit(s).");
-});
-
-test("prevents checkout when hardware stock is insufficient", async () => {
-  mockFetch(200, { projects: PROJECTS });
-  renderPage();
-  submitUserId("sydney");
-
-  const project = (await screen.findByRole("heading", { name: "Robot Arm" })).closest("li");
-  const row = within(project).getByLabelText("HWSet1 controls");
-  fireEvent.change(within(row).getByLabelText(/quantity for hwset1/i), {
-    target: { value: "101" },
-  });
-  fireEvent.click(within(row).getByRole("button", { name: "Check Out" }));
-
-  expect(within(row).getByRole("alert").textContent).toBe("Only 100 unit(s) are available.");
-  expect(within(row).getByText("Available: 100 / 100")).toBeTruthy();
-});
-
-test("checks hardware in and prevents returning too much", async () => {
-  mockFetch(200, { projects: PROJECTS });
-  renderPage();
-  submitUserId("sydney");
-
-  const project = (await screen.findByRole("heading", { name: "Robot Arm" })).closest("li");
-  const row = within(project).getByLabelText("HWSet1 controls");
-  const quantity = within(row).getByLabelText(/quantity for hwset1/i);
-
-  fireEvent.change(quantity, { target: { value: "6" } });
-  fireEvent.click(within(row).getByRole("button", { name: "Check In" }));
-  expect(within(row).getByRole("alert").textContent).toBe(
-    "This project can only check in 5 unit(s)."
-  );
-
-  fireEvent.change(quantity, { target: { value: "2" } });
-  jest.useFakeTimers();
-  fireEvent.click(within(row).getByRole("button", { name: "Check In" }));
-  expect(within(row).getByText("Available: 100 / 100")).toBeTruthy();
-  expect(within(row).getByRole("status").textContent).toBe("Checked in 2 unit(s).");
-
-  act(() => jest.advanceTimersByTime(2000));
-  expect(within(row).queryByRole("status")).toBeNull();
-  jest.useRealTimers();
-});
-
-test("shows already full when a project has no hardware to check in", async () => {
-  mockFetch(200, { projects: PROJECTS });
-  renderPage();
-  submitUserId("sydney");
-
-  const project = (await screen.findByRole("heading", { name: "Solo Project" })).closest("li");
-  const row = within(project).getByLabelText("HWSet1 controls");
-  fireEvent.click(within(row).getByRole("button", { name: "Check In" }));
-
-  expect(within(row).getByRole("alert").textContent).toBe("HWSet1 is already full.");
-});
-
-test("shows all other projects and joins one from the dashboard", async () => {
-  const availableProject = {
-    projectName: "Drone Team",
-    projectId: "drone-team",
-    description: "Autonomous drone project",
-    hwSets: {},
-    users: ["alice"],
-  };
-  const response = (body) => Promise.resolve({
-    ok: true,
-    json: () => Promise.resolve(body),
-  });
-  const fetchSpy = jest.spyOn(global, "fetch")
-    .mockImplementationOnce(() => response({ projects: PROJECTS }))
-    .mockImplementationOnce(() => response({ projects: [...PROJECTS, availableProject] }))
-    .mockImplementationOnce(() => response({
-      ...availableProject,
-      users: ["alice", "sydney"],
-    }));
-
-  renderPage();
-  submitUserId("sydney");
-
-  const availableList = await screen.findByRole("list", { name: "Available projects" });
-  const card = within(availableList).getByRole("heading", { name: "Drone Team" }).closest("li");
-  expect(
-    within(card).getAllByRole("button", { name: "Check Out" })
-      .every((button) => button.disabled)
-  ).toBe(true);
-
-  fireEvent.click(within(card).getByRole("button", { name: "Join" }));
-
-  await waitFor(() => {
-    expect(screen.queryByRole("list", { name: "Available projects" })).toBeNull();
-  });
-  expect(
-    within(screen.getByRole("list", { name: "My projects" }))
-      .getByRole("heading", { name: "Drone Team" })
-  ).toBeTruthy();
-  expect(fetchSpy.mock.calls[2][0]).toBe("/api/projects/drone-team/users");
+  fireEvent.click(nameLink);
+  expect(screen.getByText("Project page")).toBeTruthy();
 });

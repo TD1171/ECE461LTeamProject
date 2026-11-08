@@ -3,8 +3,9 @@ import { Link } from "react-router-dom";
 
 import { createProject } from "../api/projectsApi";
 import Button from "../components/Button";
+import { getSignedInUserId } from "../session";
 
-const EMPTY_FORM = { projectName: "", projectId: "", description: "", userId: "" };
+const EMPTY_FORM = { projectName: "", projectId: "", description: "" };
 
 function CreateProjectPage() {
   const [form, setForm] = useState(EMPTY_FORM);
@@ -22,16 +23,15 @@ function CreateProjectPage() {
     setError("");
     setCreatedProject(null);
 
-    if (!form.projectName.trim() || !form.projectId.trim() || !form.userId.trim()) {
-      setError("Project name, project ID, and your user ID are required.");
+    if (!form.projectName.trim() || !form.projectId.trim()) {
+      setError("Project name and project ID are required.");
       return;
     }
 
     setSubmitting(true);
     try {
-      // The creator becomes the project's first member.
-      // TODO: use the signed-in user's ID once Sign In (#2) is done.
-      const project = await createProject({ ...form, userId: form.userId.trim() });
+      // The signed-in user becomes the project's first member.
+      const project = await createProject({ ...form, userId: getSignedInUserId() });
       setCreatedProject(project);
       setForm(EMPTY_FORM);
     } catch (requestError) {
@@ -89,18 +89,6 @@ function CreateProjectPage() {
               maxLength={1000}
               placeholder="What is this project for?"
               value={form.description}
-              onChange={updateField}
-            />
-          </div>
-
-          <div className="field-row">
-            <label htmlFor="project-user-id">Your User ID</label>
-            <input
-              id="project-user-id"
-              name="userId"
-              type="text"
-              placeholder="Your user ID"
-              value={form.userId}
               onChange={updateField}
             />
           </div>
