@@ -80,8 +80,15 @@ def joinProject(collection, userId, projectId):
     )
     return result.matched_count == 1
 
+def leaveProject(collection, userId, projectId):
+    """Remove projectId from the user's projects list (issue #9)."""
+    result = collection.update_one(
+        {"userId": userId},
+        {"$pull": {"projects": projectId}},
+    )
+    return result.matched_count == 1
+
 # Function to get the list of projects for a user
 def getUserProjectsList(client, userId):
     # Get and return the list of projects a user is part of
     pass
-

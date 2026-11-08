@@ -24,13 +24,16 @@ try:
         AlreadyMemberError,
         ProjectExistsError,
         ProjectNotFoundError,
+        NotMemberError,
+        HardwareStillCheckedOutError,
         addUser as addUserToProject,
+        removeUser as removeUserFromProject,
         createProject,
         listProjects,
         listUserProjects,
         queryProject,
     )
-    from .usersDatabase import addUser, joinProject, login as loginUser, userExists
+    from .usersDatabase import addUser, joinProject, login as loginUser, userExists, leaveProject
 except ImportError:  # Supports `python server/app.py` from the repository root.
     from dummyHardwareData import DUMMY_HARDWARE, InMemoryHardwareCollection
     from dummyProjectData import DUMMY_PROJECTS, InMemoryProjectCollection
@@ -45,13 +48,16 @@ except ImportError:  # Supports `python server/app.py` from the repository root.
         AlreadyMemberError,
         ProjectExistsError,
         ProjectNotFoundError,
+        NotMemberError,
+        HardwareStillCheckedOutError,
         addUser as addUserToProject,
+        removeUser as removeUserFromProject,
         createProject,
         listProjects,
         listUserProjects,
         queryProject,
     )
-    from usersDatabase import addUser, joinProject, login as loginUser, userExists
+    from usersDatabase import addUser, joinProject, login as loginUser, userExists, leaveProject
 
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
@@ -319,7 +325,32 @@ def create_app(
 
         return jsonify(project), 200
 
-        
+    @app.delete("/api/projects/<string:project_id>/users/<string:user_id>")
+    def remove_user_from_project_api(project_id, user_id):
+        """Remove a user from a project (issue #9: Leave a Project)."""
+        user_id = user_id.strip()
+        if not user_id:
+            return jsonify({"error": "User ID is required."}), 400
+
+        user_collection = app.extensions["user_collection"]
+        try:
+            if user_collection is not None and not userExists(user_collection, user_id):
+                return jsonify({"error": f"User '{user_id}' was not found."}), 404
+            project = removeUserFromProject(
+                app.extensions["projects_collection"], project_id, user_id
+            )
+            if user_collection is not None:
+                leaveProject(user_collection, user_id, project["projectId"])
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+        except ProjectNotFoundError as error:
+            return jsonify({"error": str(error)}), 404
+        except (NotMemberError, HardwareStillCheckedOutError) as error:
+            return jsonify({"error": str(error)}), 409
+        except PyMongoError:
+            return jsonify({"error": "Projects are temporarily unavailable."}), 503
+        return jsonify(project), 200
+
     # Existing team endpoints remain available for parallel development.
     @app.get("/api/users/<string:user_id>/projects")
     def get_user_projects_api(user_id):
