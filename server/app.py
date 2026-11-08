@@ -502,10 +502,15 @@ def create_app(
         if not project_id or not hardware_name:
             return jsonify({"error": "Project ID and hardware name are required."}), 400
         try:
-            project = checkInHW(app.extensions["projects_collection"], project_id, hardware_name, quantity, None)
             hardware = returnSpace(app.extensions["hardware_collection"], hardware_name, quantity)
             if hardware is None:
                 return jsonify({"error": "Hardware set not found or capacity exceeded."}), 409
+            try:
+                project = checkInHW(app.extensions["projects_collection"], project_id, hardware_name, quantity, None)
+            except (ProjectNotFoundError, HardwareRequestError):
+                # Restore the inventory count if the project cannot accept the return.
+                requestSpace(app.extensions["hardware_collection"], hardware_name, quantity)
+                raise
         except ValueError as error:
             return jsonify({"error": str(error)}), 400
         except ProjectNotFoundError as error:

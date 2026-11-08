@@ -67,8 +67,11 @@ class InMemoryProjectCollection:
                     actual = document.get(parent, {}).get(child, 0)
                 else:
                     actual = document.get(key)
-                if isinstance(expected, dict) and "$gte" in expected:
-                    matched = actual >= expected["$gte"]
+                if isinstance(expected, dict):
+                    matched = (
+                        ("$gte" not in expected or actual >= expected["$gte"])
+                        and ("$lte" not in expected or actual <= expected["$lte"])
+                    )
                 else:
                     matched = actual == expected
                 if not matched:

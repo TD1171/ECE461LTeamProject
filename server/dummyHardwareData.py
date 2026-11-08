@@ -47,14 +47,18 @@ class InMemoryHardwareCollection:
         maximum = query.get("availability", {}).get("$lte", float("inf"))
 
         for document in self._documents:
-            if document.get("hwName") != hardware_name:
+            if document.get("hwName", document.get("name")) != hardware_name:
                 continue
-            if document.get("availability", 0) < minimum or document.get("availability", 0) > maximum:
+            available = document.get("availability", document.get("available", 0))
+            if available < minimum or available > maximum:
                 continue
 
-            if "availability" in update.get("$inc", {}):
-                document["availability"] += update["$inc"]["availability"]
+            available_field = "availability" if "availability" in document else "available"
+            if available_field in update.get("$inc", {}):
+                document[available_field] += update["$inc"][available_field]
             if "availability" in update.get("$set", {}):
-                document["availability"] = update["$set"]["availability"]
+                document[available_field] = update["$set"]["availability"]
+            if "available" in update.get("$set", {}):
+                document[available_field] = update["$set"]["available"]
             return deepcopy(document)
         return None
