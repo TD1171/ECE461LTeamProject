@@ -19,6 +19,7 @@ try:
         listHardwareSets,
         queryHardwareSet,
         requestSpace,
+        returnSpace,
     )
     from .projectsDatabase import (
         AlreadyMemberError,
@@ -29,6 +30,9 @@ try:
         listProjects,
         listUserProjects,
         queryProject,
+        checkOutHW,
+        checkInHW,
+        HardwareRequestError,
     )
     from .usersDatabase import addUser, joinProject, login as loginUser, userExists
 except ImportError:  # Supports `python server/app.py` from the repository root.
@@ -40,6 +44,7 @@ except ImportError:  # Supports `python server/app.py` from the repository root.
         listHardwareSets,
         queryHardwareSet,
         requestSpace,
+        returnSpace,
     )
     from projectsDatabase import (
         AlreadyMemberError,
@@ -50,6 +55,9 @@ except ImportError:  # Supports `python server/app.py` from the repository root.
         listProjects,
         listUserProjects,
         queryProject,
+        checkOutHW,
+        checkInHW,
+        HardwareRequestError,
     )
     from usersDatabase import addUser, joinProject, login as loginUser, userExists
 
@@ -457,34 +465,61 @@ def create_app(
         return jsonify({})
 
     @app.post("/check_out")
-    def check_out():
+    @app.post("/api/projects/<string:project_id>/hardware/<string:hardware_name>/checkout")
+    def check_out(project_id=None, hardware_name=None):
         payload = request.get_json(silent=True)
         if not isinstance(payload, dict):
             return jsonify({"error": "Request body must be a JSON object."}), 400
 
-        hardware_name = payload.get("hardwareName", payload.get("hwSetName"))
+        hardware_name = hardware_name or payload.get("hardwareName", payload.get("hwSetName"))
+        project_id = project_id or payload.get("projectId")
         quantity = payload.get("quantity", payload.get("qty"))
+        if not isinstance(project_id, str) or not project_id.strip():
+            return jsonify({"error": "Project ID is required."}), 400
         if not isinstance(hardware_name, str) or not hardware_name.strip():
             return jsonify({"error": "Hardware name is required."}), 400
 
         try:
-            hardware = requestSpace(
-                app.extensions["hardware_collection"],
-                hardware_name.strip(),
-                quantity,
-            )
+            hardware = requestSpace(app.extensions["hardware_collection"], hardware_name.strip(), quantity)
+            if hardware is None:
+                return jsonify({"error": "Not enough hardware is available."}), 409
+            project = checkOutHW(app.extensions["projects_collection"], project_id.strip(), hardware_name.strip(), quantity, None)
         except ValueError as error:
             return jsonify({"error": str(error)}), 400
         except PyMongoError:
             return jsonify({"error": "Hardware inventory is temporarily unavailable."}), 503
-
-        if hardware is None:
-            return jsonify({"error": "Not enough hardware is available."}), 409
-        return jsonify({"hardware": hardware}), 200
+        return jsonify({"hardware": hardware, "project": project}), 200
 
     @app.post("/check_in")
-    def check_in():
-        return jsonify({})
+    @app.post("/api/projects/<string:project_id>/hardware/<string:hardware_name>/checkin")
+    def check_in(project_id=None, hardware_name=None):
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"error": "Request body must be a JSON object."}), 400
+        project_id = project_id or payload.get("projectId")
+        hardware_name = hardware_name or payload.get("hardwareName", payload.get("hwSetName"))
+        quantity = payload.get("quantity", payload.get("qty"))
+        if not project_id or not hardware_name:
+            return jsonify({"error": "Project ID and hardware name are required."}), 400
+        try:
+            hardware = returnSpace(app.extensions["hardware_collection"], hardware_name, quantity)
+            if hardware is None:
+                return jsonify({"error": "Hardware set not found or capacity exceeded."}), 409
+            try:
+                project = checkInHW(app.extensions["projects_collection"], project_id, hardware_name, quantity, None)
+            except (ProjectNotFoundError, HardwareRequestError):
+                # Restore the inventory count if the project cannot accept the return.
+                requestSpace(app.extensions["hardware_collection"], hardware_name, quantity)
+                raise
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+        except ProjectNotFoundError as error:
+            return jsonify({"error": str(error)}), 404
+        except HardwareRequestError as error:
+            return jsonify({"error": str(error)}), 409
+        except PyMongoError:
+            return jsonify({"error": "Hardware inventory is temporarily unavailable."}), 503
+        return jsonify({"hardware": hardware, "project": project}), 200
 
     @app.get("/api/inventory")
     def check_inventory():

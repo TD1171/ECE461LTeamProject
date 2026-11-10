@@ -17,6 +17,7 @@ Project = {
 import re
 
 from pymongo.errors import DuplicateKeyError
+from pymongo import ReturnDocument
 
 
 PROJECT_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
@@ -35,6 +36,10 @@ class ProjectNotFoundError(Exception):
 
 class AlreadyMemberError(Exception):
     """Raised when a user tries to join a project they already belong to."""
+
+
+class HardwareRequestError(Exception):
+    """Raised when a project cannot complete a hardware request."""
 
 def serializeProject(document):
     """Convert a stored project document into the public API shape."""
@@ -185,10 +190,30 @@ def updateUsage(collection, projectId, hwSetName):
 
 
 def checkOutHW(collection, projectId, hwSetName, qty, userId):
-    """Check out hardware for the specified project and update availability."""
-    raise NotImplementedError
+    """Atomically reserve project holdings for units already deducted from inventory."""
+    if not isinstance(qty, int) or qty <= 0:
+        raise ValueError("Requested amount must be a positive integer.")
+    updated = collection.find_one_and_update(
+        {"projectId": projectId},
+        {"$inc": {f"hwSets.{hwSetName}": qty}},
+        return_document=ReturnDocument.AFTER,
+    )
+    if updated is None:
+        raise ProjectNotFoundError(f"Project '{projectId}' was not found.")
+    return serializeProject(updated)
 
 
 def checkInHW(collection, projectId, hwSetName, qty, userId):
-    """Check in hardware for the specified project and update availability."""
-    raise NotImplementedError
+    """Subtract returned units only when the project currently holds enough."""
+    if not isinstance(qty, int) or qty <= 0:
+        raise ValueError("Requested amount must be a positive integer.")
+    updated = collection.find_one_and_update(
+        {"projectId": projectId, f"hwSets.{hwSetName}": {"$gte": qty}},
+        {"$inc": {f"hwSets.{hwSetName}": -qty}},
+        return_document=ReturnDocument.AFTER,
+    )
+    if updated is None:
+        if collection.find_one({"projectId": projectId}) is None:
+            raise ProjectNotFoundError(f"Project '{projectId}' was not found.")
+        raise HardwareRequestError("Project does not hold that many units.")
+    return serializeProject(updated)
