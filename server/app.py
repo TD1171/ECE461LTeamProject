@@ -514,9 +514,16 @@ def create_app(
             hardware = requestSpace(app.extensions["hardware_collection"], hardware_name.strip(), quantity)
             if hardware is None:
                 return jsonify({"error": "Not enough hardware is available."}), 409
-            project = checkOutHW(app.extensions["projects_collection"], project_id.strip(), hardware_name.strip(), quantity, None)
+            try:
+                project = checkOutHW(app.extensions["projects_collection"], project_id.strip(), hardware_name.strip(), quantity, None)
+            except ProjectNotFoundError:
+                # Give the units back so inventory isn't lost.
+                returnSpace(app.extensions["hardware_collection"], hardware_name.strip(), quantity)
+                raise
         except ValueError as error:
             return jsonify({"error": str(error)}), 400
+        except ProjectNotFoundError as error:
+            return jsonify({"error": str(error)}), 404
         except PyMongoError:
             return jsonify({"error": "Hardware inventory is temporarily unavailable."}), 503
         return jsonify({"hardware": hardware, "project": project}), 200
