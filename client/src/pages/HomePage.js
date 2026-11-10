@@ -4,32 +4,7 @@ import { Link } from "react-router-dom";
 import { fetchUserProjects } from "../api/projectsApi";
 import JoinProjectForm from "../components/JoinProjectForm";
 import ProjectCard from "../components/ProjectCard";
-import { checkoutHardware, checkinHardware, fetchHardwareSets } from "../api/hardwareApi";
-
-// Remembers the last user ID so the list reloads when you come back from
-// Create or Join. TODO: remove once Sign In (#2) gives us the real user.
-const USER_ID_KEY = "dashboardUserId";
-
-const INITIAL_HARDWARE = [
-  { name: "HWSet1", capacity: 100, available: 100 },
-  { name: "HWSet2", capacity: 100, available: 100 },
-];
-
-function readSavedUserId() {
-  try {
-    return sessionStorage.getItem(USER_ID_KEY) || "";
-  } catch {
-    return "";
-  }
-}
-
-function saveUserId(userId) {
-  try {
-    sessionStorage.setItem(USER_ID_KEY, userId);
-  } catch {
-    // Storage can be blocked (private mode); the page still works without it.
-  }
-}
+import { getSignedInUserId } from "../session";
 
 function HomePage() {
   // RequireSignIn only lets signed-in users reach this page.
@@ -45,49 +20,11 @@ function HomePage() {
   // Bumped after a successful join so the project list reloads.
   const [reloadKey, setReloadKey] = useState(0);
 
-  const updateHardware = async (projectId, hardwareName, quantityChange) => {
-    const result = quantityChange > 0
-      ? await checkoutHardware(projectId, hardwareName, quantityChange)
-      : await checkinHardware(projectId, hardwareName, -quantityChange);
-    setHardware(await fetchHardwareSets());
-    setProjects((items) => items.map((project) => (
-      project.projectId === projectId ? result.project : project
-    )));
+  const toggleProject = (projectId) => {
+    setExpandedId((current) => (current === projectId ? null : projectId));
   };
 
-  useEffect(() => {
-    fetchHardwareSets().then(setHardware).catch((requestError) => setError(requestError.message));
-  }, []);
-
-  const loadProjects = async (rawUserId) => {
-    const userId = rawUserId.trim();
-    setError("");
-    if (!userId) {
-      setError("Enter your user ID to see your projects.");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const [userProjects, everyProject] = await Promise.all([
-        fetchUserProjects(userId),
-        fetchProjects(),
-      ]);
-      setProjects(userProjects);
-      setAllProjects(everyProject);
-      setLoadedUserId(userId);
-      saveUserId(userId);
-    } catch (requestError) {
-      setProjects([]);
-      setAllProjects([]);
-      setLoadedUserId("");
-      setError(requestError.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Load right away if we already know who the user is.
+  // Load the signed-in user's projects as soon as the page opens.
   useEffect(() => {
     // Ignore a slow response if the page has already closed.
     let active = true;
