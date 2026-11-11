@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
+import { signIn } from "../api/usersApi";
+import { saveSignedInUserId } from "../session";
+
 function LoginPage() {
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
@@ -17,29 +20,13 @@ function LoginPage() {
     }
 
     try {
-      const response = await fetch("/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          userId: userId,
-          password: password,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setMessage(data.error || "Unable to sign in.");
-        return;
-      }
-
-      sessionStorage.setItem("dashboardUserId", data.user.userId);
-      
+      const user = await signIn({ userId, password });
+      // Remember who signed in so other pages don't ask for the user ID again.
+      saveSignedInUserId(user.userId);
       navigate("/dashboard");
     } catch (error) {
-      setMessage("Unable to connect to the server.");
+      // ApiError messages are already user-friendly (server text or fallback).
+      setMessage(error.message);
     }
   };
 

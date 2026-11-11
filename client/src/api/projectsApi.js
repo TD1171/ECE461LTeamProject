@@ -1,44 +1,32 @@
-async function requestJson(path, options = {}) {
-  const response = await fetch(path, {
-    ...options,
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  });
+// Project API calls. Request/response handling lives in ./client.
+import { requestJson } from "./client";
 
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error || "Something went wrong. Please try again.");
-  }
+// Base URL for one project; IDs are encoded so any character is safe in the path.
+const projectPath = (projectId) => `/api/projects/${encodeURIComponent(projectId)}`;
 
-  return payload;
-}
-
-export async function createProject({ projectName, projectId, description, userId }) {
+export function createProject({ projectName, projectId, description, userId }) {
   return requestJson("/api/projects", {
     method: "POST",
-    body: JSON.stringify({ projectName, projectId, description, userId }),
+    body: { projectName, projectId, description, userId },
   });
 }
 
-export async function joinProject({ projectId, userId }) {
-  return requestJson(`/api/projects/${encodeURIComponent(projectId)}/users`, {
+export function joinProject({ projectId, userId }) {
+  return requestJson(`${projectPath(projectId)}/users`, {
     method: "POST",
-    body: JSON.stringify({ userId }),
+    body: { userId },
   });
 }
 
-export async function leaveProject({ projectId, userId }) {
+export function leaveProject({ projectId, userId }) {
   return requestJson(
-    `/api/projects/${encodeURIComponent(projectId)}/users/${encodeURIComponent(userId)}`,
+    `${projectPath(projectId)}/users/${encodeURIComponent(userId)}`,
     { method: "DELETE" }
   );
 }
 
-export async function fetchProject(projectId) {
-  return requestJson(`/api/projects/${encodeURIComponent(projectId)}`);
+export function fetchProject(projectId) {
+  return requestJson(projectPath(projectId));
 }
 
 export async function fetchProjects() {

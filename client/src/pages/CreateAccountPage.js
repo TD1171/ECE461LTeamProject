@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
+import { createAccount } from "../api/usersApi";
+
 function CreateAccountPage() {
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
@@ -21,28 +23,12 @@ function CreateAccountPage() {
     }
 
     try {
-      const response = await fetch("/add_user", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          userId: userId,
-          password: password,
-        }),
-      });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      setMessage(data.error || "Unable to create account.");
-      return;
+      await createAccount({ userId, password });
+      setMessage("Account created successfully.");
+    } catch (error) {
+      // ApiError messages are already user-friendly (server text or fallback).
+      setMessage(error.message);
     }
-
-    setMessage("Account created successfully.");
-  } catch (error) {
-    setMessage("Unable to connect to the server.");
-}
   };
 
   return (
