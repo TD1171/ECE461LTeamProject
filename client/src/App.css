@@ -372,6 +372,13 @@
   max-width: none;
 }
 
+.signed-in-as {
+  margin: 0;
+  padding: 0 24px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 /* Small screens: buttons go on top, list underneath. */
 @media (max-width: 800px) {
   .dashboard-layout {
@@ -554,9 +561,55 @@
   padding-left: 20px;
 }
 
+.leave-project { margin-bottom: 20px; }
+.button-danger { border-color: var(--danger); color: var(--danger); }
+.button-danger:hover:not(:disabled) { background: var(--danger); color: #ffffff; }
+
+/* Join Project tab on the dashboard: looks like the Create Project box,
+   and opens the join form underneath it. */
+.join-tab {
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.join-tab-toggle {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: none;
+  padding: 16px 20px;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.join-tab-toggle:hover {
+  background: var(--soft-surface);
+}
+
+.join-tab-panel {
+  border-top: 1px solid var(--line);
+  padding: 16px 20px;
+}
+
+/* The tab is narrow, so stack the label above the input. */
+.join-tab-panel .field-row {
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
 /* Small screens: members drop below everything else. */
 @media (max-width: 800px) {
   .project-page-layout {
     grid-template-columns: 1fr;
   }
 }
+
+/* Project page hardware: one check out / check in row per hardware set,
+   with how many units this project holds underneath. */
+.project-hardware-item { border-bottom: 1px solid #d8d8d8; padding-bottom: 10px; }
+.project-hardware-item:last-child { border-bottom: 0; }
+.project-hardware-item .project-hardware-row { border-bottom: 0; padding-bottom: 4px; }
+.project-hardware-held { margin: 0; color: var(--muted); font-size: 0.85rem; }

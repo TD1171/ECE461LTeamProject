@@ -71,3 +71,15 @@ def test_checkin_rejects_return_that_would_exceed_capacity():
     assert response.status_code == 409
     inventory = client.get("/api/hardware").get_json()["hardware"]
     assert inventory[0]["available"] == 9
+
+def test_checkout_to_missing_project_returns_404_and_keeps_inventory():
+    client = make_client(available=5)
+
+    response = client.post(
+        "/check_out",
+        json={"projectId": "no-such-project", "hardwareName": "HWSet1", "quantity": 2},
+    )
+
+    assert response.status_code == 404
+    inventory = client.get("/api/hardware").get_json()["hardware"]
+    assert inventory[0]["available"] == 5
