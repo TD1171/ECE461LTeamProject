@@ -21,3 +21,11 @@ export function saveSignedInUserId(userId) {
     // Nothing else to do; the user will be asked to sign in again.
   }
 }
+
+export function signOut() {
+  try {
+    sessionStorage.removeItem("dashboardUserId");
+  } catch {
+    // Storage may be unavailable
+  }
+}

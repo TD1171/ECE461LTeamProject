@@ -613,3 +613,10 @@
 .project-hardware-item:last-child { border-bottom: 0; }
 .project-hardware-item .project-hardware-row { border-bottom: 0; padding-bottom: 4px; }
 .project-hardware-held { margin: 0; color: var(--muted); font-size: 0.85rem; }
+
+.dashboard-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
