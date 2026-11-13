@@ -1,13 +1,20 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { fetchUserProjects } from "../api/projectsApi";
+import Button from "../components/Button";
 import JoinProjectForm from "../components/JoinProjectForm";
 import ProjectCard from "../components/ProjectCard";
-import { getSignedInUserId } from "../session";
-import SignOutButton from "../components/SignOutButton";
+import { getSignedInUserId, signOut } from "../session";
 
 function HomePage() {
+  const navigate = useNavigate();
+
+  const handleSignOut = () => {
+    signOut();
+    navigate("/", { replace: true });
+  };
+
   // RequireSignIn only lets signed-in users reach this page.
   const userId = getSignedInUserId();
   const [projects, setProjects] = useState([]);
@@ -61,7 +68,9 @@ function HomePage() {
             Signed in as <strong>{userId}</strong>
           </p>
 
-          <SignOutButton />
+          <Button variant="primary" onClick={handleSignOut}>
+            Sign Out
+          </Button>
         </div>
       </header>
 
