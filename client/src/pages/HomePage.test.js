@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import HomePage from "./HomePage";
+import RequireSignIn from "../components/RequireSignIn";
 
 beforeEach(() => {
   // Pretend "sydney" signed in, the same way LoginPage does.
@@ -180,4 +181,36 @@ test("clicking the project name goes to the project page", async () => {
 
   fireEvent.click(nameLink);
   expect(screen.getByText("Project page")).toBeTruthy();
+});
+
+test("signing out clears session and protects dashboard", async () => {
+  mockFetch(200, { projects: [] });
+
+  render(
+    <MemoryRouter
+      initialEntries={["/dashboard"]}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
+      <Routes>
+        <Route path="/" element={<h1>Sign In</h1>} />
+        <Route
+          path="/dashboard"
+          element={
+            <RequireSignIn>
+              <HomePage />
+            </RequireSignIn>
+          }
+        />
+      </Routes>
+    </MemoryRouter>
+  );
+
+  expect(sessionStorage.getItem("dashboardUserId")).toBe("sydney");
+
+  await screen.findByText(/don't belong to any projects yet/i);
+
+  fireEvent.click(screen.getByRole("button", { name: "Sign Out" }));
+
+  expect(sessionStorage.getItem("dashboardUserId")).toBeNull();
+  expect(screen.getByRole("heading", { name: "Sign In" })).toBeTruthy();
 });
