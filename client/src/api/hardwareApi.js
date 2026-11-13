@@ -1,40 +1,32 @@
-async function requestJson(path) {
-  const response = await fetch(path, {
-    headers: { Accept: "application/json" },
-  });
+// Hardware-set API calls. Request/response handling lives in ./client.
+import { requestJson } from "./client";
 
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error || "Unable to load hardware information.");
-  }
-
-  return payload;
-}
-
-async function postHardwareAction(path, body) {
-  const response = await fetch(path, {
-    method: "POST",
-    headers: { Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || "Hardware request failed.");
-  return payload;
-}
+const LOAD_ERROR = "Unable to load hardware information.";
+const ACTION_ERROR = "Hardware request failed.";
 
 export function checkoutHardware(projectId, hardwareName, quantity) {
-  return postHardwareAction("/check_out", { projectId, hardwareName, quantity });
+  return requestJson("/check_out", {
+    method: "POST",
+    body: { projectId, hardwareName, quantity },
+    errorMessage: ACTION_ERROR,
+  });
 }
 
 export function checkinHardware(projectId, hardwareName, quantity) {
-  return postHardwareAction("/check_in", { projectId, hardwareName, quantity });
+  return requestJson("/check_in", {
+    method: "POST",
+    body: { projectId, hardwareName, quantity },
+    errorMessage: ACTION_ERROR,
+  });
 }
 
 export async function fetchHardwareSets() {
-  const payload = await requestJson("/api/hardware");
+  const payload = await requestJson("/api/hardware", { errorMessage: LOAD_ERROR });
   return payload.hardware;
 }
 
-export async function fetchHardwareDetail(name) {
-  return requestJson(`/api/hardware/${encodeURIComponent(name)}`);
+export function fetchHardwareDetail(name) {
+  return requestJson(`/api/hardware/${encodeURIComponent(name)}`, {
+    errorMessage: LOAD_ERROR,
+  });
 }
