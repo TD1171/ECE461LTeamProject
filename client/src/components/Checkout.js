@@ -5,6 +5,7 @@ import CheckoutForm from "./CheckoutForm";
 import CurrentHardware from "./CurrentHardware";
 import HardwareTable from "./HardwareTable";
 import PageHeader from "./PageHeader";
+import StatusMessage from "./StatusMessage";
 
 function Checkout() {
   const [hardware, setHardware] = useState([]);
@@ -56,7 +57,7 @@ function Checkout() {
       <div className="checkout-content">
         <section aria-label="Hardware inventory">
           {loading && <p className="loading-message">Loading hardware inventory…</p>}
-          {error && <p className="error-banner" role="alert">{error}</p>}
+          <StatusMessage type="error">{error}</StatusMessage>
           {!loading && !error && hardware.length === 0 && (
             <p className="empty-state">No hardware sets are currently configured.</p>
           )}

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import Button from "./Button";
 import Panel from "./Panel";
+import StatusMessage from "./StatusMessage";
 
 const projects = [
   { id: "SDP-461", label: "Senior Design Prototype (SDP-461)" },
@@ -11,10 +12,13 @@ const projects = [
 function CheckoutForm({ hardware }) {
   const [quantity, setQuantity] = useState(1);
   const [projectId, setProjectId] = useState(projects[0].id);
+  // Kept separate so validation errors look like errors, not like the preview.
+  const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
     setQuantity(1);
+    setError("");
     setMessage("");
   }, [hardware?.name]);
 
@@ -24,10 +28,12 @@ function CheckoutForm({ hardware }) {
 
     const amount = Number(quantity);
     if (!Number.isInteger(amount) || amount < 1 || amount > hardware.available) {
-      setMessage(`Enter a whole number between 1 and ${hardware.available}.`);
+      setMessage("");
+      setError(`Enter a whole number between 1 and ${hardware.available}.`);
       return;
     }
 
+    setError("");
     setMessage(`Checkout preview: ${amount} unit(s) of ${hardware.name} for ${projectId}.`);
   };
 
@@ -56,7 +62,8 @@ function CheckoutForm({ hardware }) {
         <Button type="submit" variant="primary" block disabled={!hardware}>
           Confirm Checkout
         </Button>
-        {message && <p className="request-message" role="status">{message}</p>}
+        <StatusMessage type="error">{error}</StatusMessage>
+        <StatusMessage type="success">{message}</StatusMessage>
       </form>
     </Panel>
   );

@@ -10,6 +10,7 @@ import { fetchProject, leaveProject } from "../api/projectsApi";
 import Button from "../components/Button";
 import HardwareSetRow from "../components/HardwareSetRow";
 import PageHeader from "../components/PageHeader";
+import StatusMessage from "../components/StatusMessage";
 import { getSignedInUserId } from "../session";
 
 // Full page for one project, reached from /projects/:projectId.
@@ -116,7 +117,7 @@ function ProjectPage() {
 
       <div className="checkout-content">
         {loading && <p className="loading-message">Loading project...</p>}
-        {error && <p className="error-banner" role="alert">{error}</p>}
+        <StatusMessage type="error">{error}</StatusMessage>
 
         {/* Only members get to see a project's details. */}
         {project && !loading && !isMember && (
@@ -137,9 +138,7 @@ function ProjectPage() {
 
               <div>
                 <h2>Hardware</h2>
-                {hardwareError && (
-                  <p className="error-banner" role="alert">{hardwareError}</p>
-                )}
+                <StatusMessage type="error">{hardwareError}</StatusMessage>
                 {!hardwareError && hardwareSets.length === 0 && (
                   <p className="empty-state">No hardware sets are available yet.</p>
                 )}
@@ -173,9 +172,7 @@ function ProjectPage() {
                 >
                   {leaving ? "Leaving..." : "Leave Project"}
                 </Button>
-                {leaveError && (
-                  <p className="error-banner" role="alert">{leaveError}</p>
-                )}
+                <StatusMessage type="error">{leaveError}</StatusMessage>
               </div>
               <h2 className="members-heading">
                 <button

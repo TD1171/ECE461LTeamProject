@@ -2,32 +2,37 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { createAccount } from "../api/usersApi";
+import StatusMessage from "../components/StatusMessage";
 
 function CreateAccountPage() {
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [message, setMessage] = useState("");
+  // Separate so a failure never looks like the success message.
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    setError("");
+    setSuccess("");
 
     if (!userId || !password || !confirmPassword) {
-      setMessage("Please fill out all fields.");
+      setError("Please fill out all fields.");
       return;
     }
 
     if (password !== confirmPassword) {
-      setMessage("Passwords do not match.");
+      setError("Passwords do not match.");
       return;
     }
 
     try {
       await createAccount({ userId, password });
-      setMessage("Account created successfully.");
-    } catch (error) {
+      setSuccess("Account created successfully.");
+    } catch (requestError) {
       // ApiError messages are already user-friendly (server text or fallback).
-      setMessage(error.message);
+      setError(requestError.message);
     }
   };
 
@@ -65,7 +70,8 @@ function CreateAccountPage() {
             Create Account
           </button>
 
-          {message && <p className="account-message">{message}</p>}
+          <StatusMessage type="error">{error}</StatusMessage>
+          <StatusMessage type="success">{success}</StatusMessage>
         </form>
 
         <Link to="/">Back to Sign In</Link>

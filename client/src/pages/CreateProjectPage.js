@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { createProject } from "../api/projectsApi";
 import Button from "../components/Button";
 import PageHeader from "../components/PageHeader";
+import StatusMessage from "../components/StatusMessage";
 import { getSignedInUserId } from "../session";
 
 const EMPTY_FORM = { projectName: "", projectId: "", description: "" };
@@ -95,11 +96,11 @@ function CreateProjectPage() {
             {submitting ? "Creating..." : "Create Project"}
           </Button>
 
-          {error && <p className="error-banner" role="alert">{error}</p>}
+          <StatusMessage type="error">{error}</StatusMessage>
           {createdProject && (
-            <p className="request-message" role="status">
+            <StatusMessage type="success">
               Created "{createdProject.projectName}" (Project ID: {createdProject.projectId}).
-            </p>
+            </StatusMessage>
           )}
         </form>
       </div>
