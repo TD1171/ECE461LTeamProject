@@ -3,6 +3,7 @@ import { useState } from "react";
 import { joinProject } from "../api/projectsApi";
 import { getSignedInUserId } from "../session";
 import Button from "./Button";
+import StatusMessage from "./StatusMessage";
 
 // The join form on its own, so both the dashboard's Join Project tab and the
 // /projects/join page can use it. onJoined runs after a successful join.
@@ -59,11 +60,11 @@ function JoinProjectForm({ onJoined }) {
         {submitting ? "Joining..." : "Join"}
       </Button>
 
-      {error && <p className="error-banner" role="alert">{error}</p>}
+      <StatusMessage type="error">{error}</StatusMessage>
       {joinedProject && (
-        <p className="request-message" role="status">
+        <StatusMessage type="success">
           Joined "{joinedProject.projectName}" (Project ID: {joinedProject.projectId}).
-        </p>
+        </StatusMessage>
       )}
     </form>
   );

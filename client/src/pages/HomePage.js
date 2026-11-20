@@ -6,6 +6,7 @@ import Button from "../components/Button";
 import JoinProjectForm from "../components/JoinProjectForm";
 import PageHeader from "../components/PageHeader";
 import ProjectCard from "../components/ProjectCard";
+import StatusMessage from "../components/StatusMessage";
 import { getSignedInUserId, signOut } from "../session";
 
 function HomePage() {
@@ -86,7 +87,7 @@ function HomePage() {
           <div className="dashboard-layout">
             <div className="dashboard-main">
               {loading && <p className="loading-message">Loading your projects...</p>}
-              {error && <p className="error-banner" role="alert">{error}</p>}
+              <StatusMessage type="error">{error}</StatusMessage>
 
               {loaded && !loading && projects.length === 0 && (
                 <p className="empty-state">
