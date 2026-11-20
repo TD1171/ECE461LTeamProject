@@ -108,6 +108,31 @@ class InMemoryProjectCollection:
                     if value in values:
                         document[field] = [v for v in values if v != value]
                         modified = 1
+                # $set replaces a field's value (used to change the owner).
+                for field, value in update.get("$set", {}).items():
+                    if document.get(field) != value:
+                        document[field] = value
+                        modified = 1
                 return SimpleNamespace(matched_count=1, modified_count=modified)
         return SimpleNamespace(matched_count=0, modified_count=0)
-        
+
+    def update_many(self, query, update):
+        """Apply $pull to every matching document, like PyMongo's update_many."""
+        matched = modified = 0
+        for document in self._documents:
+            if self._matches(document, query):
+                matched += 1
+                for field, value in update.get("$pull", {}).items():
+                    values = document.get(field, [])
+                    if value in values:
+                        document[field] = [v for v in values if v != value]
+                        modified += 1
+        return SimpleNamespace(matched_count=matched, modified_count=modified)
+
+    def delete_one(self, query):
+        """Remove the first matching document, like PyMongo's delete_one."""
+        for index, document in enumerate(self._documents):
+            if self._matches(document, query):
+                del self._documents[index]
+                return SimpleNamespace(deleted_count=1)
+        return SimpleNamespace(deleted_count=0)

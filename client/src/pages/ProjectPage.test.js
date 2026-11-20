@@ -190,6 +190,7 @@ test("checking out sends the request and shows the server's new numbers", async 
     projectId: "robot-arm",
     hardwareName: "HWSet1",
     quantity: 3,
+    userId: "sydney",
   });
 });
 
@@ -210,6 +211,7 @@ test("checking in sends the request and shows the server's new numbers", async (
     projectId: "robot-arm",
     hardwareName: "HWSet1",
     quantity: 2,
+    userId: "sydney",
   });
 });
 
@@ -282,4 +284,126 @@ test("shows the server error and stays on the page if leaving fails", async () =
   await waitFor(() =>
     expect(screen.getByRole("button", { name: "Leave Project" }).disabled).toBe(false)
   );
+});
+
+// --- Owner rule: the creator gets a crown and can't leave -----------------
+
+function mockOwnedProject(owner) {
+  return jest.spyOn(global, "fetch").mockImplementation((url) => {
+    const body = url === "/api/hardware"
+      ? { hardware: HARDWARE }
+      : { ...ROBOT_ARM, owner };
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+  });
+}
+
+test("the owner sees a note instead of the Leave button", async () => {
+  mockOwnedProject("sydney");
+  renderPage();
+
+  expect(await screen.findByText(/You own this project/)).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Leave Project" })).toBeNull();
+});
+
+test("other members still see the Leave button", async () => {
+  mockOwnedProject("alice");
+  renderPage();
+
+  expect(await screen.findByRole("button", { name: "Leave Project" })).toBeTruthy();
+  expect(screen.queryByText(/You own this project/)).toBeNull();
+});
+
+test("the members list puts a crown next to the owner only", async () => {
+  mockOwnedProject("alice");
+  renderPage();
+
+  fireEvent.click(await screen.findByRole("button", { name: /Members \(2\)/ }));
+
+  const members = screen.getAllByRole("listitem");
+  const alice = members.find((item) => item.textContent.startsWith("alice"));
+  const sydney = members.find((item) => item.textContent.startsWith("sydney"));
+  expect(alice.textContent).toContain("👑");
+  expect(sydney.textContent).not.toContain("👑");
+});
+
+
+// --- Owner: transfer ownership and delete --------------------------------
+
+// Answers each request by URL + method; `owned` is the project the GET returns.
+function mockOwnerServer({ owned, transfer, remove } = {}) {
+  return jest.spyOn(global, "fetch").mockImplementation((url, options = {}) => {
+    if (url === "/api/hardware") return reply(200, { hardware: HARDWARE });
+    if (url.endsWith("/owner")) return reply(...transfer);
+    if (options.method === "DELETE") return reply(...remove);
+    return reply(200, owned);
+  });
+}
+
+test("owner can transfer ownership; the crown moves and Leave appears", async () => {
+  jest.spyOn(window, "confirm").mockReturnValue(true);
+  const fetchSpy = mockOwnerServer({
+    owned: { ...ROBOT_ARM, owner: "sydney" },
+    transfer: [200, { ...ROBOT_ARM, owner: "alice" }],
+  });
+  renderPage();
+
+  fireEvent.change(await screen.findByLabelText("Transfer ownership to"), {
+    target: { value: "alice" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Transfer" }));
+
+  expect(await screen.findByRole("button", { name: "Leave Project" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Delete Project" })).toBeNull();
+  const call = fetchSpy.mock.calls.find(([url]) => url.endsWith("/owner"));
+  expect(call[0]).toBe("/api/projects/robot-arm/owner");
+  expect(call[1].method).toBe("PUT");
+  expect(JSON.parse(call[1].body)).toEqual({ userId: "sydney", newOwnerId: "alice" });
+
+  fireEvent.click(screen.getByRole("button", { name: /Members \(2\)/ }));
+  const alice = screen.getAllByRole("listitem").find((li) => li.textContent.startsWith("alice"));
+  expect(alice.textContent).toContain("👑");
+});
+
+test("transfer list only offers other members", async () => {
+  mockOwnerServer({ owned: { ...ROBOT_ARM, owner: "sydney" } });
+  renderPage();
+
+  const select = await screen.findByLabelText("Transfer ownership to");
+  const values = Array.from(select.options).map((option) => option.value);
+  expect(values).toEqual(["", "alice"]);
+});
+
+test("Delete Project is disabled while hardware is checked out", async () => {
+  // ROBOT_ARM has 5 units of HWSet1 checked out.
+  mockOwnerServer({ owned: { ...ROBOT_ARM, owner: "sydney" } });
+  renderPage();
+
+  const button = await screen.findByRole("button", { name: "Delete Project" });
+  expect(button.disabled).toBe(true);
+  expect(screen.getByText("Check in all hardware before deleting this project.")).toBeTruthy();
+});
+
+test("owner deletes a project with nothing checked out and goes to the dashboard", async () => {
+  jest.spyOn(window, "confirm").mockReturnValue(true);
+  const fetchSpy = mockOwnerServer({
+    owned: { ...ROBOT_ARM, owner: "sydney", hwSets: { HWSet1: 0, HWSet2: 0 } },
+    remove: [200, { deleted: "robot-arm" }],
+  });
+  renderPage();
+
+  fireEvent.click(await screen.findByRole("button", { name: "Delete Project" }));
+
+  expect(await screen.findByText("Dashboard page")).toBeTruthy();
+  const call = fetchSpy.mock.calls.find(([, options]) => options?.method === "DELETE");
+  expect(call[0]).toBe("/api/projects/robot-arm");
+  expect(JSON.parse(call[1].body)).toEqual({ userId: "sydney" });
+});
+
+test("non-owners see no owner controls", async () => {
+  mockOwnerServer({ owned: { ...ROBOT_ARM, owner: "alice" } });
+  renderPage();
+
+  await screen.findByRole("button", { name: "Leave Project" });
+  expect(screen.queryByRole("button", { name: "Delete Project" })).toBeNull();
+  expect(screen.queryByLabelText("Transfer ownership to")).toBeNull();
 });
