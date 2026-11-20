@@ -1,4 +1,12 @@
 {
+  "name": "ece461l-hardware-checkout",
+  "private": true,
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "heroku-postbuild": "npm install --prefix client && npm run build --prefix client"
+  },
   "dependencies": {
     "dotenv": "^18.0.5",
     "mongodb": "^7.7.0"
