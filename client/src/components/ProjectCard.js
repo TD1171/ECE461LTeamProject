@@ -48,7 +48,8 @@ function ProjectCard({ project, expanded, onToggle }) {
         <div className="project-snippet" id={detailsId}>
           <p>{description || "No description yet."}</p>
           <p>
-            <strong>Members:</strong> {users.join(", ")}
+            <strong>Members:</strong>{" "}
+            {users.map((member) => (member === project.owner ? `${member} 👑` : member)).join(", ")}
           </p>
           <p>
             <strong>Hardware:</strong>{" "}
