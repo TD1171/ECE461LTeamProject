@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from pymongo import MongoClient
 from pymongo.errors import DuplicateKeyError, PyMongoError
 
@@ -70,6 +70,10 @@ except ImportError:  # Supports `python server/app.py` from the repository root.
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
+# Where `npm run build` puts the React app. On Heroku, Flask serves these
+# files so the whole app runs from one URL.
+CLIENT_BUILD_DIR = Path(__file__).resolve().parents[1] / "client" / "build"
+
 
 def _build_hardware_collection(app):
     """Use MongoDB when configured; otherwise use temporary in-memory data."""
@@ -79,7 +83,7 @@ def _build_hardware_collection(app):
 
         client = MongoClient(
             app.config["MONGODB_URI"],
-            serverSelectionTimeoutMS=2500,
+            serverSelectionTimeoutMS=10000,
         )
         collection = client[app.config["MONGODB_DATABASE"]][
             app.config["MONGODB_HARDWARE_COLLECTION"]
@@ -129,7 +133,8 @@ def create_app(
     user_collection=None,
 ):
     """Create the Flask application with an injectable hardware collection."""
-    app = Flask(__name__)
+    # static_folder=None: serve_react_app below handles the built files.
+    app = Flask(__name__, static_folder=None)
     default_source = "mongodb" if os.getenv("MONGODB_URI") else "dummy"
     app.config.from_mapping(
         HARDWARE_DATA_SOURCE=os.getenv(
@@ -144,6 +149,7 @@ def create_app(
             "MONGODB_PROJECTS_COLLECTION", "Projects"
         ),
         MONGODB_USER_COLLECTION=os.getenv("MONGODB_USER_COLLECTION", "Users"),
+        CLIENT_BUILD_DIR=str(CLIENT_BUILD_DIR),
     )
     if config:
         app.config.update(config)
@@ -562,6 +568,22 @@ def create_app(
     @app.get("/api/inventory")
     def check_inventory():
         return jsonify({})
+
+    # Serve the React app for every other GET. Real files (JS, CSS, images)
+    # are sent as-is; anything else gets index.html so React Router can show
+    # the right page, e.g. refreshing on /projects/robot-arm.
+    @app.get("/", defaults={"path": ""})
+    @app.get("/<path:path>")
+    def serve_react_app(path):
+        if path.startswith("api/"):
+            return jsonify({"error": "Not found."}), 404
+
+        build_dir = Path(app.config["CLIENT_BUILD_DIR"])
+        if path and (build_dir / path).is_file():
+            return send_from_directory(build_dir, path)
+        if (build_dir / "index.html").is_file():
+            return send_from_directory(build_dir, "index.html")
+        return jsonify({"error": "Frontend has not been built. Run npm run build in client/."}), 404
 
     return app
 
