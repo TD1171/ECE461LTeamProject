@@ -49,6 +49,7 @@ def test_create_project_returns_201_and_project():
         "description": "Senior design prototype",
         "hwSets": {},
         "users": ["sydney"],
+        "owner": "sydney",
     }
 
 

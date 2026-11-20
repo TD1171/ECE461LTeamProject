@@ -214,3 +214,44 @@ def test_database_error_returns_503():
     response = leave(make_app(projects=BrokenCollection(PROJECTS)).test_client())
 
     assert response.status_code == 503
+
+# --- Owner rule: the creator owns the project and can't leave ---------------
+
+def owned_project():
+    return InMemoryProjectCollection([{
+        "projectName": "Owned", "projectId": "owned", "description": "",
+        "hwSets": {}, "users": ["alice", "sydney"], "owner": "alice",
+    }])
+
+
+def test_owner_cannot_leave_and_stays_a_member():
+    client = make_app(projects=owned_project()).test_client()
+
+    response = leave(client, project_id="owned", user_id="alice")
+
+    assert response.status_code == 409
+    assert "own this project" in response.get_json()["error"]
+    project = client.get("/api/projects/owned").get_json()
+    assert "alice" in project["users"]
+
+
+def test_non_owner_member_can_leave_owned_project():
+    client = make_app(projects=owned_project()).test_client()
+
+    response = leave(client, project_id="owned", user_id="sydney")
+
+    assert response.status_code == 200
+    assert response.get_json()["users"] == ["alice"]
+    assert response.get_json()["owner"] == "alice"
+
+
+def test_creator_is_saved_as_owner():
+    client = make_app(projects=InMemoryProjectCollection([])).test_client()
+
+    created = client.post(
+        "/api/projects",
+        json={"projectName": "New", "projectId": "new-one", "userId": "sydney"},
+    ).get_json()
+
+    assert created["owner"] == "sydney"
+    assert leave(client, project_id="new-one", user_id="sydney").status_code == 409

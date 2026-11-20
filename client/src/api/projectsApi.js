@@ -40,3 +40,19 @@ export async function fetchUserProjects(userId) {
   );
   return payload.projects;
 }
+
+// Owner only: hand ownership to another member of the project.
+export function transferOwnership({ projectId, userId, newOwnerId }) {
+  return requestJson(`${projectPath(projectId)}/owner`, {
+    method: "PUT",
+    body: { userId, newOwnerId },
+  });
+}
+
+// Owner only, and only once no hardware is checked out.
+export function deleteProject({ projectId, userId }) {
+  return requestJson(projectPath(projectId), {
+    method: "DELETE",
+    body: { userId },
+  });
+}

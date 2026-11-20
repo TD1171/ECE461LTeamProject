@@ -6,7 +6,12 @@ import {
   checkoutHardware,
   fetchHardwareSets,
 } from "../api/hardwareApi";
-import { fetchProject, leaveProject } from "../api/projectsApi";
+import {
+  deleteProject,
+  fetchProject,
+  leaveProject,
+  transferOwnership,
+} from "../api/projectsApi";
 import Button from "../components/Button";
 import HardwareSetRow from "../components/HardwareSetRow";
 import PageHeader from "../components/PageHeader";
@@ -32,6 +37,10 @@ function ProjectPage() {
   const [membersOpen, setMembersOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [leaveError, setLeaveError] = useState("");
+  // Owner controls: who to hand ownership to, and in-flight/error state.
+  const [newOwnerId, setNewOwnerId] = useState("");
+  const [ownerBusy, setOwnerBusy] = useState(false);
+  const [ownerError, setOwnerError] = useState("");
 
   useEffect(() => {
     // Ignore a slow response if the user has already moved to another project.
@@ -103,9 +112,55 @@ function ProjectPage() {
     }
   };
 
+  const handleTransfer = async () => {
+    if (!newOwnerId) return;
+    const confirmed = window.confirm(
+      `Make ${newOwnerId} the owner of ${project.projectName}? You'll become a regular member.`
+    );
+    if (!confirmed) return;
+
+    setOwnerBusy(true);
+    setOwnerError("");
+    try {
+      const updated = await transferOwnership({
+        projectId: project.projectId,
+        userId,
+        newOwnerId,
+      });
+      setProject(updated);
+      setNewOwnerId("");
+    } catch (requestError) {
+      setOwnerError(requestError.message);
+    } finally {
+      setOwnerBusy(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    const confirmed = window.confirm(
+      `Delete ${project.projectName}? This removes it for every member and can't be undone.`
+    );
+    if (!confirmed) return;
+
+    setOwnerBusy(true);
+    setOwnerError("");
+    try {
+      await deleteProject({ projectId: project.projectId, userId });
+      navigate("/dashboard");
+    } catch (requestError) {
+      setOwnerError(requestError.message);
+      setOwnerBusy(false);
+    }
+  };
+
   const isMember = Boolean(project && userId && project.users.includes(userId));
+  // The creator owns the project: they get a crown and can't leave.
+  const isOwner = Boolean(project && project.owner && project.owner === userId);
   // Hardware this project has checked out, keyed by hardware set name.
   const checkedOut = project?.hwSets || {};
+  // Owners can only delete once every set is back at zero.
+  const hasHardwareOut = Object.values(checkedOut).some((qty) => qty > 0);
+  const otherMembers = project ? project.users.filter((id) => id !== userId) : [];
 
   return (
     <section className="checkout-page">
@@ -165,13 +220,56 @@ function ProjectPage() {
             <aside className="project-members">
               {/* Leave sits above the members list so it is easy to find. */}
               <div className="leave-project">
-                <Button
-                  className="button-danger"
-                  onClick={handleLeave}
-                  disabled={leaving}
-                >
-                  {leaving ? "Leaving..." : "Leave Project"}
-                </Button>
+                {isOwner ? (
+                  <div className="owner-controls">
+                    <p className="owner-note">
+                      <span aria-hidden="true">👑 </span>You own this project.
+                      Transfer ownership before you can leave.
+                    </p>
+
+                    <label htmlFor="new-owner">Transfer ownership to</label>
+                    <div className="owner-transfer-row">
+                      <select
+                        id="new-owner"
+                        value={newOwnerId}
+                        onChange={(event) => setNewOwnerId(event.target.value)}
+                        disabled={ownerBusy || otherMembers.length === 0}
+                      >
+                        <option value="">
+                          {otherMembers.length === 0 ? "No other members yet" : "Choose a member"}
+                        </option>
+                        {otherMembers.map((memberId) => (
+                          <option key={memberId} value={memberId}>{memberId}</option>
+                        ))}
+                      </select>
+                      <Button onClick={handleTransfer} disabled={ownerBusy || !newOwnerId}>
+                        Transfer
+                      </Button>
+                    </div>
+
+                    <Button
+                      className="button-danger"
+                      onClick={handleDelete}
+                      disabled={ownerBusy || hasHardwareOut}
+                    >
+                      Delete Project
+                    </Button>
+                    {hasHardwareOut && (
+                      <p className="owner-hint">
+                        Check in all hardware before deleting this project.
+                      </p>
+                    )}
+                    <StatusMessage type="error">{ownerError}</StatusMessage>
+                  </div>
+                ) : (
+                  <Button
+                    className="button-danger"
+                    onClick={handleLeave}
+                    disabled={leaving}
+                  >
+                    {leaving ? "Leaving..." : "Leave Project"}
+                  </Button>
+                )}
                 <StatusMessage type="error">{leaveError}</StatusMessage>
               </div>
               <h2 className="members-heading">
@@ -189,7 +287,12 @@ function ProjectPage() {
               {membersOpen && (
                 <ul id="project-members-list" aria-label="Members">
                   {project.users.map((memberId) => (
-                    <li key={memberId}>{memberId}</li>
+                    <li key={memberId}>
+                      {memberId}
+                      {memberId === project.owner && (
+                        <span className="owner-crown" title="Owner" aria-label="(owner)"> 👑</span>
+                      )}
+                    </li>
                   ))}
                 </ul>
               )}

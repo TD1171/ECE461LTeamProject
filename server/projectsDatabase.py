@@ -52,6 +52,8 @@ def serializeProject(document):
         "description": document.get("description", ""),
         "hwSets": dict(document.get("hwSets", {})),
         "users": list(document.get("users", [])),
+        # Projects made before the owner rule have no owner (None).
+        "owner": document.get("owner"),
     }
 
 
@@ -111,6 +113,8 @@ def createProject(collection, projectName, projectId, description="", creatorId=
         "description": description,
         "hwSets": {},
         "users": [creatorId] if creatorId else [],
+        # The creator owns the project and can never leave it.
+        "owner": creatorId,
     }
     try:
         collection.insert_one(document)
@@ -145,6 +149,68 @@ def listProjects(collection):
     """Return every project sorted by name."""
     projects = [serializeProject(document) for document in collection.find({})]
     return sorted(projects, key=lambda project: project["projectName"].lower())
+
+def _requireText(value, label):
+    """Return value stripped, or raise ValueError if it is missing."""
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{label} is required.")
+    return value.strip()
+
+
+def transferOwnership(collection, projectId, requesterId, newOwnerId):
+    """Make newOwnerId the owner. Only the current owner can do this.
+
+    The new owner must already be a member. The previous owner stays a
+    member, just a regular one. Returns the updated project.
+    """
+    projectId = _requireText(projectId, "Project ID")
+    requesterId = _requireText(requesterId, "User ID")
+    newOwnerId = _requireText(newOwnerId, "New owner")
+
+    project = collection.find_one({"projectId": projectId})
+    if project is None:
+        raise ProjectNotFoundError(f"Project '{projectId}' was not found.")
+    if project.get("owner") != requesterId:
+        raise NotOwnerError("Only the project's owner can transfer ownership.")
+    if newOwnerId == requesterId:
+        raise ValueError("You already own this project.")
+    if newOwnerId not in project.get("users", []):
+        raise NotMemberError(f"'{newOwnerId}' is not a member of this project.")
+
+    # Matching on the current owner AND membership means a request that
+    # raced with another change (e.g. the member left) does nothing.
+    result = collection.update_one(
+        {"projectId": projectId, "owner": requesterId, "users": newOwnerId},
+        {"$set": {"owner": newOwnerId}},
+    )
+    if result.matched_count == 0:
+        raise NotOwnerError("Ownership changed; reload the project and try again.")
+    return queryProject(collection, projectId)
+
+
+def deleteProject(collection, projectId, requesterId):
+    """Delete a project. Only the owner can, and only with no hardware out.
+
+    Returns the deleted project (so callers know which users to update).
+    """
+    projectId = _requireText(projectId, "Project ID")
+    requesterId = _requireText(requesterId, "User ID")
+
+    project = collection.find_one({"projectId": projectId})
+    if project is None:
+        raise ProjectNotFoundError(f"Project '{projectId}' was not found.")
+    if project.get("owner") != requesterId:
+        raise NotOwnerError("Only the project's owner can delete it.")
+    if _holdsHardware(project):
+        raise HardwareStillCheckedOutError(
+            "Check in all of this project's hardware before deleting it."
+        )
+
+    result = collection.delete_one({"projectId": projectId, "owner": requesterId})
+    if result.deleted_count == 0:
+        raise NotOwnerError("Ownership changed; reload the project and try again.")
+    return serializeProject(project)
+
 
 # --- Not yet implemented (see issues #5 and #18-#24) -----------------------
 
@@ -186,6 +252,14 @@ class NotMemberError(Exception):
     """Raised when a user tries to leave a project they do not belong to."""
 
 
+class OwnerCannotLeaveError(Exception):
+    """Raised when the project's owner (its creator) tries to leave."""
+
+
+class NotOwnerError(Exception):
+    """Raised when someone other than the owner tries an owner-only action."""
+
+
 class HardwareStillCheckedOutError(Exception):
     """Raised when the last member tries to leave while hardware is out."""
 
@@ -200,7 +274,8 @@ def removeUser(collection, projectId, userId):
 
     Returns the updated project. Raises ValueError for missing input,
     ProjectNotFoundError for an unknown projectId, NotMemberError if the user
-    does not belong to it, and HardwareStillCheckedOutError as above.
+    does not belong to it, OwnerCannotLeaveError for the owner, and
+    HardwareStillCheckedOutError as above.
     """
     if not isinstance(userId, str) or not userId.strip():
         raise ValueError("User ID is required.")
@@ -215,6 +290,11 @@ def removeUser(collection, projectId, userId):
         raise ProjectNotFoundError(f"Project '{projectId}' was not found.")
     if userId not in project.get("users", []):
         raise NotMemberError(f"You are not a member of project '{projectId}'.")
+    if userId == project.get("owner"):
+        raise OwnerCannotLeaveError(
+            "You own this project, so you can't leave it. Transfer ownership "
+            "to another member first, or delete the project."
+        )
 
     isLastMember = project.get("users", []) == [userId]
     if isLastMember and _holdsHardware(project):

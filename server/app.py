@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from pymongo import MongoClient
 from pymongo.errors import DuplicateKeyError, PyMongoError
 
@@ -27,6 +27,10 @@ try:
         ProjectNotFoundError,
         NotMemberError,
         HardwareStillCheckedOutError,
+        OwnerCannotLeaveError,
+        deleteProject as deleteProjectRecord,
+        transferOwnership,
+        NotOwnerError,
         addUser as addUserToProject,
         removeUser as removeUserFromProject,
         createProject,
@@ -55,6 +59,10 @@ except ImportError:  # Supports `python server/app.py` from the repository root.
         ProjectNotFoundError,
         NotMemberError,
         HardwareStillCheckedOutError,
+        OwnerCannotLeaveError,
+        deleteProject as deleteProjectRecord,
+        transferOwnership,
+        NotOwnerError,
         addUser as addUserToProject,
         removeUser as removeUserFromProject,
         createProject,
@@ -70,6 +78,10 @@ except ImportError:  # Supports `python server/app.py` from the repository root.
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
+# Where `npm run build` puts the React app. On Heroku, Flask serves these
+# files so the whole app runs from one URL.
+CLIENT_BUILD_DIR = Path(__file__).resolve().parents[1] / "client" / "build"
+
 
 def _build_hardware_collection(app):
     """Use MongoDB when configured; otherwise use temporary in-memory data."""
@@ -79,7 +91,7 @@ def _build_hardware_collection(app):
 
         client = MongoClient(
             app.config["MONGODB_URI"],
-            serverSelectionTimeoutMS=2500,
+            serverSelectionTimeoutMS=10000,
         )
         collection = client[app.config["MONGODB_DATABASE"]][
             app.config["MONGODB_HARDWARE_COLLECTION"]
@@ -129,7 +141,8 @@ def create_app(
     user_collection=None,
 ):
     """Create the Flask application with an injectable hardware collection."""
-    app = Flask(__name__)
+    # static_folder=None: serve_react_app below handles the built files.
+    app = Flask(__name__, static_folder=None)
     default_source = "mongodb" if os.getenv("MONGODB_URI") else "dummy"
     app.config.from_mapping(
         HARDWARE_DATA_SOURCE=os.getenv(
@@ -144,6 +157,7 @@ def create_app(
             "MONGODB_PROJECTS_COLLECTION", "Projects"
         ),
         MONGODB_USER_COLLECTION=os.getenv("MONGODB_USER_COLLECTION", "Users"),
+        CLIENT_BUILD_DIR=str(CLIENT_BUILD_DIR),
     )
     if config:
         app.config.update(config)
@@ -353,11 +367,65 @@ def create_app(
             return jsonify({"error": str(error)}), 400
         except ProjectNotFoundError as error:
             return jsonify({"error": str(error)}), 404
-        except (NotMemberError, HardwareStillCheckedOutError) as error:
+        except (NotMemberError, HardwareStillCheckedOutError, OwnerCannotLeaveError) as error:
             return jsonify({"error": str(error)}), 409
         except PyMongoError:
             return jsonify({"error": "Projects are temporarily unavailable."}), 503
         return jsonify(project), 200
+
+    @app.put("/api/projects/<string:project_id>/owner")
+    def transfer_ownership_api(project_id):
+        """Owner hands ownership to another member: {userId, newOwnerId}."""
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"error": "Request body must be a JSON object."}), 400
+        try:
+            project = transferOwnership(
+                app.extensions["projects_collection"],
+                project_id,
+                payload.get("userId"),
+                payload.get("newOwnerId"),
+            )
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+        except ProjectNotFoundError as error:
+            return jsonify({"error": str(error)}), 404
+        except NotOwnerError as error:
+            return jsonify({"error": str(error)}), 403
+        except NotMemberError as error:
+            return jsonify({"error": str(error)}), 409
+        except PyMongoError:
+            return jsonify({"error": "Projects are temporarily unavailable."}), 503
+        return jsonify(project), 200
+
+    @app.delete("/api/projects/<string:project_id>")
+    def delete_project_api(project_id):
+        """Owner deletes the project once nothing is checked out: {userId}."""
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"error": "Request body must be a JSON object."}), 400
+        try:
+            project = deleteProjectRecord(
+                app.extensions["projects_collection"], project_id, payload.get("userId")
+            )
+            # Keep every member's own project list in sync.
+            user_collection = app.extensions["user_collection"]
+            if user_collection is not None:
+                user_collection.update_many(
+                    {"projects": project["projectId"]},
+                    {"$pull": {"projects": project["projectId"]}},
+                )
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+        except ProjectNotFoundError as error:
+            return jsonify({"error": str(error)}), 404
+        except NotOwnerError as error:
+            return jsonify({"error": str(error)}), 403
+        except HardwareStillCheckedOutError as error:
+            return jsonify({"error": str(error)}), 409
+        except PyMongoError:
+            return jsonify({"error": "Projects are temporarily unavailable."}), 503
+        return jsonify({"deleted": project["projectId"]}), 200
 
     # Existing team endpoints remain available for parallel development.
     @app.get("/api/users/<string:user_id>/projects")
@@ -495,6 +563,22 @@ def create_app(
     def get_hw_info():
         return jsonify({})
 
+    def _membership_error(project_id, user_id):
+        """Return an error response unless user_id is a member of project_id.
+
+        Test case 17: only a project's members may check its hardware out or
+        in. This runs before any inventory changes, so a rejected request
+        changes nothing.
+        """
+        if not isinstance(user_id, str) or not user_id.strip():
+            return jsonify({"error": "User ID is required."}), 400
+        project = queryProject(app.extensions["projects_collection"], project_id)
+        if project is None:
+            return jsonify({"error": f"Project '{project_id}' was not found."}), 404
+        if user_id.strip() not in project["users"]:
+            return jsonify({"error": "Only members of this project can check hardware out or in."}), 403
+        return None
+
     @app.post("/check_out")
     @app.post("/api/projects/<string:project_id>/hardware/<string:hardware_name>/checkout")
     def check_out(project_id=None, hardware_name=None):
@@ -511,6 +595,9 @@ def create_app(
             return jsonify({"error": "Hardware name is required."}), 400
 
         try:
+            denied = _membership_error(project_id.strip(), payload.get("userId"))
+            if denied:
+                return denied
             hardware = requestSpace(app.extensions["hardware_collection"], hardware_name.strip(), quantity)
             if hardware is None:
                 return jsonify({"error": "Not enough hardware is available."}), 409
@@ -540,6 +627,9 @@ def create_app(
         if not project_id or not hardware_name:
             return jsonify({"error": "Project ID and hardware name are required."}), 400
         try:
+            denied = _membership_error(project_id, payload.get("userId"))
+            if denied:
+                return denied
             hardware = returnSpace(app.extensions["hardware_collection"], hardware_name, quantity)
             if hardware is None:
                 return jsonify({"error": "Hardware set not found or capacity exceeded."}), 409
@@ -562,6 +652,22 @@ def create_app(
     @app.get("/api/inventory")
     def check_inventory():
         return jsonify({})
+
+    # Serve the React app for every other GET. Real files (JS, CSS, images)
+    # are sent as-is; anything else gets index.html so React Router can show
+    # the right page, e.g. refreshing on /projects/robot-arm.
+    @app.get("/", defaults={"path": ""})
+    @app.get("/<path:path>")
+    def serve_react_app(path):
+        if path.startswith("api/"):
+            return jsonify({"error": "Not found."}), 404
+
+        build_dir = Path(app.config["CLIENT_BUILD_DIR"])
+        if path and (build_dir / path).is_file():
+            return send_from_directory(build_dir, path)
+        if (build_dir / "index.html").is_file():
+            return send_from_directory(build_dir, "index.html")
+        return jsonify({"error": "Frontend has not been built. Run npm run build in client/."}), 404
 
     return app
 

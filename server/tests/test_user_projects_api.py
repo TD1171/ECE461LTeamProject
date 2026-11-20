@@ -69,6 +69,7 @@ def test_returns_full_project_details():
         "description": "Senior design prototype",
         "hwSets": {},
         "users": ["sydney", "alice"],
+        "owner": None,
     }
 
 
