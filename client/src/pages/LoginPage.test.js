@@ -43,7 +43,7 @@ test("asks for both fields before contacting the server", async () => {
   fillAndSubmit("sydney", "");
 
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Please enter your User ID and password."
+    "User ID and password are required."
   );
   expect(global.fetch).not.toHaveBeenCalled();
 });
@@ -68,4 +68,30 @@ test("remembers the user and goes to the dashboard on success", async () => {
 
   expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeTruthy();
   expect(sessionStorage.getItem("dashboardUserId")).toBe("sydney");
+});
+
+test("a user ID of only spaces counts as empty", async () => {
+  jest.spyOn(global, "fetch");
+  renderPage();
+
+  fillAndSubmit("   ", "secret");
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "User ID and password are required."
+  );
+  expect(global.fetch).not.toHaveBeenCalled();
+});
+
+test("sends the trimmed user ID and blocks double submits while waiting", async () => {
+  // Never resolves, so the page stays in its "waiting" state.
+  jest.spyOn(global, "fetch").mockReturnValue(new Promise(() => {}));
+  renderPage();
+
+  fillAndSubmit("  sydney  ", "secret");
+
+  const button = await screen.findByRole("button", { name: "Signing in..." });
+  expect(button).toBeDisabled();
+  fireEvent.click(button);
+  expect(global.fetch).toHaveBeenCalledTimes(1);
+  expect(JSON.parse(global.fetch.mock.calls[0][1].body).userId).toBe("sydney");
 });

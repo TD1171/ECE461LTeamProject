@@ -63,3 +63,40 @@ test("shows the server's error when the user ID is taken", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent("User ID already exists.");
   expect(screen.queryByRole("status")).toBeNull();
 });
+
+test("a user ID of only spaces counts as empty", async () => {
+  jest.spyOn(global, "fetch");
+  renderPage();
+
+  fillAndSubmit("   ", "secret", "secret");
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "User ID and password are required."
+  );
+  expect(global.fetch).not.toHaveBeenCalled();
+});
+
+test("asks to confirm the password when that field is empty", async () => {
+  jest.spyOn(global, "fetch");
+  renderPage();
+
+  fillAndSubmit("sydney", "secret", "");
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Please confirm your password."
+  );
+  expect(global.fetch).not.toHaveBeenCalled();
+});
+
+test("sends the trimmed user ID and blocks double submits while waiting", async () => {
+  jest.spyOn(global, "fetch").mockReturnValue(new Promise(() => {}));
+  renderPage();
+
+  fillAndSubmit("  sydney  ", "secret", "secret");
+
+  const button = await screen.findByRole("button", { name: "Creating account..." });
+  expect(button).toBeDisabled();
+  fireEvent.click(button);
+  expect(global.fetch).toHaveBeenCalledTimes(1);
+  expect(JSON.parse(global.fetch.mock.calls[0][1].body).userId).toBe("sydney");
+});

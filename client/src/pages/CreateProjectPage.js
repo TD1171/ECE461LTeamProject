@@ -6,6 +6,7 @@ import Button from "../components/Button";
 import PageHeader from "../components/PageHeader";
 import StatusMessage from "../components/StatusMessage";
 import { getSignedInUserId } from "../session";
+import { getProjectIdError, PROJECT_ID_MAX_LENGTH } from "../validation";
 
 const EMPTY_FORM = { projectName: "", projectId: "", description: "" };
 
@@ -26,8 +27,12 @@ function CreateProjectPage() {
     setError("");
     setCreatedProject(null);
 
-    if (!form.projectName.trim() || !form.projectId.trim()) {
-      setError("Project name and project ID are required.");
+    // Check here first so simple mistakes don't need a round trip.
+    const validationError = form.projectName.trim()
+      ? getProjectIdError(form.projectId)
+      : "Project name is required.";
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -69,7 +74,7 @@ function CreateProjectPage() {
               id="project-id"
               name="projectId"
               type="text"
-              maxLength={32}
+              maxLength={PROJECT_ID_MAX_LENGTH}
               placeholder="Project ID (letters, numbers, - or _)"
               value={form.projectId}
               onChange={updateField}

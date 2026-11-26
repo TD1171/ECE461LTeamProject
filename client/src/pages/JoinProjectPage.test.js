@@ -90,3 +90,17 @@ test("links back to the dashboard", () => {
 
   expect(screen.getByRole("link", { name: "Back to Dashboard" })).toHaveAttribute("href", "/dashboard");
 });
+test("catches a badly formatted project ID before calling the server", async () => {
+  jest.spyOn(global, "fetch");
+  renderPage();
+
+  fireEvent.change(screen.getByLabelText("Project ID"), {
+    target: { value: "robot arm!" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Join" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Project ID must be 1-32 characters"
+  );
+  expect(global.fetch).not.toHaveBeenCalled();
+});
