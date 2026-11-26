@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { joinProject } from "../api/projectsApi";
 import { getSignedInUserId } from "../session";
+import { getProjectIdError, PROJECT_ID_MAX_LENGTH } from "../validation";
 import Button from "./Button";
 import StatusMessage from "./StatusMessage";
 
@@ -18,11 +19,13 @@ function JoinProjectForm({ onJoined }) {
     setError("");
     setJoinedProject(null);
 
-    const trimmedId = projectId.trim();
-    if (!trimmedId) {
-      setError("Project ID is required.");
+    // Same Project ID rule as Create Project, so a typo is caught right away.
+    const validationError = getProjectIdError(projectId);
+    if (validationError) {
+      setError(validationError);
       return;
     }
+    const trimmedId = projectId.trim();
 
     setSubmitting(true);
     try {
@@ -49,7 +52,7 @@ function JoinProjectForm({ onJoined }) {
           id="join-project-id"
           name="projectId"
           type="text"
-          maxLength={32}
+          maxLength={PROJECT_ID_MAX_LENGTH}
           placeholder="Project ID shared by a teammate"
           value={projectId}
           onChange={(event) => setProjectId(event.target.value)}

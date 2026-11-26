@@ -114,3 +114,20 @@ test("does not show Go to Project when creation fails", async () => {
   await screen.findByRole("alert");
   expect(screen.queryByRole("button", { name: "Go to Project" })).toBeNull();
 });
+test("catches a badly formatted project ID before calling the server", async () => {
+  jest.spyOn(global, "fetch");
+  renderPage();
+
+  fireEvent.change(screen.getByLabelText("Project Name"), {
+    target: { value: "Robot Arm" },
+  });
+  fireEvent.change(screen.getByLabelText("Project ID"), {
+    target: { value: "robot arm!" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Create Project" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Project ID must be 1-32 characters"
+  );
+  expect(global.fetch).not.toHaveBeenCalled();
+});
