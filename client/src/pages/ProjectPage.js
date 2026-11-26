@@ -22,6 +22,8 @@ import { getSignedInUserId } from "../session";
 // Issue #7: members see the project's info.
 // Issue #9: members can leave the project from here.
 // Issues #18-#24: members check hardware out and back in from here.
+// Owner rules (PR #93): the owner can hand ownership to another member or
+// delete the project, but can't leave it while they still own it.
 function ProjectPage() {
   const { projectId } = useParams();
   const navigate = useNavigate();
