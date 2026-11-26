@@ -181,6 +181,11 @@ def create_app(
 
     @app.get("/api/health")
     def health_check():
+        """Report whether the server (and MongoDB, if used) is reachable.
+
+        200 with the data source ("mongodb" or "dummy"), or 503 if the
+        database does not answer a ping.
+        """
         if mongo_client is not None:
             try:
                 mongo_client.admin.command("ping")
@@ -195,6 +200,7 @@ def create_app(
 
     @app.get("/api/hardware")
     def get_hardware():
+        """List every hardware set with its capacity and availability."""
         try:
             hardware = listHardwareSets(app.extensions["hardware_collection"])
         except PyMongoError:
@@ -203,6 +209,7 @@ def create_app(
 
     @app.get("/api/hardware/<string:hardware_name>")
     def get_hardware_detail(hardware_name):
+        """Return one hardware set by name, or 404 if it doesn't exist."""
         try:
             hardware = queryHardwareSet(
                 app.extensions["hardware_collection"], hardware_name
@@ -217,6 +224,12 @@ def create_app(
     @app.post("/api/hardware")
     @app.post("/create_hardware_set")
     def create_hardware_api():
+        """Create a hardware set. 201 on success, 400 bad input, 409 duplicate.
+
+        Accepts both the new keys (name, capacity) and the template's keys
+        (hwSetName, initCapacity), which is also why the old
+        /create_hardware_set path is kept as an alias.
+        """
         payload = request.get_json(silent=True)
         if not isinstance(payload, dict):
             return jsonify({"error": "Request body must be a JSON object."}), 400
@@ -246,6 +259,12 @@ def create_app(
 
     @app.post("/api/projects")
     def create_project_api():
+        """Create a project; the creator becomes its owner and first member.
+
+        Body: projectName, projectId, description (optional), userId.
+        201 with the project, 400 bad input, 404 unknown user,
+        409 projectId already taken.
+        """
         payload = request.get_json(silent=True)
         if not isinstance(payload, dict):
             return jsonify({"error": "Request body must be a JSON object."}), 400
@@ -290,6 +309,7 @@ def create_app(
 
     @app.get("/api/projects")
     def get_projects_api():
+        """List all projects (not filtered by user)."""
         try:
             projects = listProjects(app.extensions["projects_collection"])
         except PyMongoError:
@@ -298,6 +318,7 @@ def create_app(
 
     @app.get("/api/projects/<string:project_id>")
     def get_project_api(project_id):
+        """Return one project by ID, or 404 if it doesn't exist."""
         try:
             project = queryProject(app.extensions["projects_collection"], project_id)
         except PyMongoError:
@@ -459,6 +480,11 @@ def create_app(
     # Existing team endpoints remain available for parallel development.
     @app.post("/login")
     def login():
+        """Sign in with userId and password.
+
+        200 with the user (never the password hash), 400 missing fields,
+        401 wrong ID or password, 503 if the user database is unavailable.
+        """
         data = request.get_json(silent=True) or {}
 
         user_id = str(data.get("userId", "")).strip()
@@ -494,16 +520,28 @@ def create_app(
 
         return jsonify({"user": user}), 200
 
+    # --- Unused template stubs -------------------------------------------
+    # The routes below come from the course template and just return {}.
+    # The frontend does not call them; the real endpoints are listed next to
+    # each one. They are kept for now so nothing that might call them breaks.
+
     @app.get("/main")
     def main_page():
+        """Unused stub. The dashboard uses GET /api/users/<id>/projects."""
         return jsonify({})
 
     @app.post("/join_project")
     def join_project():
+        """Unused stub. Real endpoint: POST /api/projects/<id>/users."""
         return jsonify({})
 
     @app.post("/add_user")
     def add_user():
+        """Create an account (used by the Create Account page).
+
+        Body: userId, password, username (optional, defaults to userId).
+        201 with the new user, 400 missing fields, 409 userId taken.
+        """
         data = request.get_json(silent=True) or {}
 
         user_id = str(data.get("userId", "")).strip()
@@ -545,22 +583,27 @@ def create_app(
 
     @app.post("/get_user_projects_list")
     def get_user_projects_list():
+        """Unused stub. Real endpoint: GET /api/users/<id>/projects."""
         return jsonify({})
 
     @app.post("/create_project")
     def create_project():
+        """Unused stub. Real endpoint: POST /api/projects."""
         return jsonify({})
 
     @app.post("/get_project_info")
     def get_project_info():
+        """Unused stub. Real endpoint: GET /api/projects/<id>."""
         return jsonify({})
 
     @app.post("/get_all_hw_names")
     def get_all_hw_names():
+        """Unused stub. Real endpoint: GET /api/hardware."""
         return jsonify({})
 
     @app.post("/get_hw_info")
     def get_hw_info():
+        """Unused stub. Real endpoint: GET /api/hardware/<name>."""
         return jsonify({})
 
     def _membership_error(project_id, user_id):
@@ -582,6 +625,19 @@ def create_app(
     @app.post("/check_out")
     @app.post("/api/projects/<string:project_id>/hardware/<string:hardware_name>/checkout")
     def check_out(project_id=None, hardware_name=None):
+        """Check hardware out to a project.
+
+        Two paths reach this: the REST-style URL the frontend uses, and the
+        template's /check_out, which takes projectId and hardwareName (or
+        hwSetName) in the body instead. quantity may also be sent as qty.
+
+        Order matters because hardware and projects are separate collections:
+          1. Only project members may check out (_membership_error).
+          2. Take the units from the hardware set (fails with 409 if not
+             enough are available).
+          3. Record them on the project. If that fails, give the units back
+             so inventory is never lost.
+        """
         payload = request.get_json(silent=True)
         if not isinstance(payload, dict):
             return jsonify({"error": "Request body must be a JSON object."}), 400
@@ -618,6 +674,15 @@ def create_app(
     @app.post("/check_in")
     @app.post("/api/projects/<string:project_id>/hardware/<string:hardware_name>/checkin")
     def check_in(project_id=None, hardware_name=None):
+        """Return hardware from a project. Mirror image of check_out.
+
+          1. Only project members may check in.
+          2. Put the units back on the hardware set (409 if that would go
+             over capacity).
+          3. Remove them from the project. If the project doesn't hold that
+             many (HardwareRequestError) or doesn't exist, take the units
+             back off the hardware set so the two collections stay in sync.
+        """
         payload = request.get_json(silent=True)
         if not isinstance(payload, dict):
             return jsonify({"error": "Request body must be a JSON object."}), 400
@@ -651,6 +716,7 @@ def create_app(
 
     @app.get("/api/inventory")
     def check_inventory():
+        """Unused stub. Use GET /api/hardware for inventory."""
         return jsonify({})
 
     # Serve the React app for every other GET. Real files (JS, CSS, images)

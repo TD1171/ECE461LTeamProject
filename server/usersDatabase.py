@@ -1,8 +1,16 @@
-# Import necessary libraries and modules
-#from pymongo import MongoClient
-from werkzeug.security import generate_password_hash, check_password_hash
+"""User accounts: sign up, sign in, and each user's list of project IDs.
 
-#import projectsDatabase as projectsDB
+Passwords are never stored as typed. addUser saves a salted hash
+(werkzeug's generate_password_hash) and login compares with
+check_password_hash, so the database never holds plain-text passwords.
+Functions that return a user leave the hash out.
+
+Membership is stored on both sides: the project lists its users and the
+user lists its projects. joinProject/leaveProject keep the user's side in
+sync after projectsDatabase has updated the project's side.
+"""
+
+from werkzeug.security import generate_password_hash, check_password_hash
 
 '''
 Structure of User entry:
@@ -13,9 +21,6 @@ User = {
     'projects': [project1_ID, project2_ID, ...]
 }
 '''
-
-# Function to add a new user
-
 
 
 def addUser(collection, username, userId, password):
@@ -40,12 +45,14 @@ def addUser(collection, username, userId, password):
         "userId": userId,
         "projects": [],
     }
-# Helper function to query a user by username and userId
+
+
 def __queryUser(client, username, userId):
+    """Unused template stub. Lookups use collection.find_one directly."""
     # Query and return a user from the database
     pass
 
-# Function to log in a user
+
 def login(collection, userId, password):
     """Authenticate a user by user ID and password."""
 
@@ -88,7 +95,10 @@ def leaveProject(collection, userId, projectId):
     )
     return result.matched_count == 1
 
-# Function to get the list of projects for a user
+
 def getUserProjectsList(client, userId):
+    """Unused template stub. The API uses projectsDatabase.listUserProjects
+    (GET /api/users/<id>/projects) instead.
+    """
     # Get and return the list of projects a user is part of
     pass
