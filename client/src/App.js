@@ -1,54 +1,36 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import RequireSignIn from "./components/RequireSignIn";
 
-import HomePage from "./pages/HomePage";
+import RedirectIfSignedIn from "./components/RedirectIfSignedIn";
+import RequireSignIn from "./components/RequireSignIn";
 import CreateAccountPage from "./pages/CreateAccountPage";
 import CreateProjectPage from "./pages/CreateProjectPage";
+import HomePage from "./pages/HomePage";
 import JoinProjectPage from "./pages/JoinProjectPage";
+import LoginPage from "./pages/LoginPage";
 import ProjectPage from "./pages/ProjectPage";
 import "./App.css";
-import LoginPage from "./pages/LoginPage";
 
 function App() {
   return (
     <BrowserRouter>
       <main className="app-shell">
         <Routes>
-          <Route path="/" element={<LoginPage />} />
-          <Route
-            path="/dashboard"
-            element={
-              <RequireSignIn>
-                <HomePage />
-              </RequireSignIn>
-            }
-          />
-          <Route
-            path="/projects/new"
-            element={
-              <RequireSignIn>
-                <CreateProjectPage />
-              </RequireSignIn>
-            }
-          />
-          <Route
-            path="/projects/join"
-            element={
-              <RequireSignIn>
-                <JoinProjectPage />
-              </RequireSignIn>
-            }
-          />
-          <Route
-            path="/projects/:projectId"
-            element={
-              <RequireSignIn>
-                <ProjectPage />
-              </RequireSignIn>
-            }
-          />
+          {/* Signed-out pages. Signed-in users skip to the dashboard. */}
+          <Route element={<RedirectIfSignedIn />}>
+            <Route path="/" element={<LoginPage />} />
+            <Route path="/create-account" element={<CreateAccountPage />} />
+          </Route>
+
+          {/* Everything here needs a signed-in user. Add new app pages here. */}
+          <Route element={<RequireSignIn />}>
+            <Route path="/dashboard" element={<HomePage />} />
+            <Route path="/projects/new" element={<CreateProjectPage />} />
+            <Route path="/projects/join" element={<JoinProjectPage />} />
+            <Route path="/projects/:projectId" element={<ProjectPage />} />
+          </Route>
+
+          {/* Unknown URLs go to Sign In (which forwards signed-in users on). */}
           <Route path="*" element={<Navigate to="/" replace />} />
-          <Route path="/create-account" element={<CreateAccountPage />} />
         </Routes>
       </main>
     </BrowserRouter>

@@ -1,22 +1,15 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 
 import { fetchUserProjects } from "../api/projectsApi";
-import Button from "../components/Button";
+import AccountActions from "../components/AccountActions";
 import JoinProjectForm from "../components/JoinProjectForm";
 import PageHeader from "../components/PageHeader";
 import ProjectCard from "../components/ProjectCard";
 import StatusMessage from "../components/StatusMessage";
-import { getSignedInUserId, signOut } from "../session";
+import { getSignedInUserId } from "../session";
 
 function HomePage() {
-  const navigate = useNavigate();
-
-  const handleSignOut = () => {
-    signOut();
-    navigate("/", { replace: true });
-  };
-
   // RequireSignIn only lets signed-in users reach this page.
   const userId = getSignedInUserId();
   const [projects, setProjects] = useState([]);
@@ -61,21 +54,8 @@ function HomePage() {
 
   return (
     <section className="checkout-page">
-      {/* Title on the left, who is signed in on the right. */}
-      <PageHeader
-        title="My Dashboard"
-        actions={
-          <div className="dashboard-header-actions">
-            <p className="signed-in-as">
-              Signed in as <strong>{userId}</strong>
-            </p>
-
-            <Button variant="primary" onClick={handleSignOut}>
-              Sign Out
-            </Button>
-          </div>
-        }
-      />
+      {/* The dashboard is home, so no "Back to Dashboard" link here. */}
+      <PageHeader title="My Dashboard" actions={<AccountActions />} />
 
       <div className="checkout-content">
         <p>Welcome to HardwareShare! Manage your projects and hardware resources.</p>
