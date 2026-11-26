@@ -24,7 +24,7 @@ export function saveSignedInUserId(userId) {
 
 export function signOut() {
   try {
-    sessionStorage.removeItem("dashboardUserId");
+    sessionStorage.removeItem(USER_ID_KEY);
   } catch {
     // Storage may be unavailable
   }

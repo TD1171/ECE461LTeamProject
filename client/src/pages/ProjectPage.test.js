@@ -163,7 +163,7 @@ test("members list is closed until the Members tab is clicked", async () => {
 
   fireEvent.click(toggle);
   expect(toggle.getAttribute("aria-expanded")).toBe("true");
-  expect(screen.getByText("sydney")).toBeTruthy();
+  expect(screen.getByText("sydney", { selector: "li" })).toBeTruthy();
   expect(screen.getByText("alice")).toBeTruthy();
 
   fireEvent.click(toggle);
